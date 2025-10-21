@@ -1,0 +1,9 @@
+typer>=0.12
+click>=8.1
+click-repl>=0.3
+rich>=13.7
+dependency-injector>=4.41
+pytest>=8.0.0
+pytest-cov>=4.0.0
+coverage-badge>=1.1.0
+

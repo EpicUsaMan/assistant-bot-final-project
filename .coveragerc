@@ -1,0 +1,44 @@
+[run]
+# Only measure coverage for our project code
+source = 
+    src/commands
+    src/models
+    src/services
+    src/container.py
+    src/main.py
+
+# Omit test files and third-party libraries
+omit =
+    */tests/*
+    */test_*.py
+    */__pycache__/*
+    */venv/*
+    */site-packages/*
+    */.venv/*
+
+[report]
+# Show missing lines in the report
+show_missing = True
+
+# Exclude lines from coverage
+exclude_lines =
+    # Standard pragma
+    pragma: no cover
+    
+    # Don't complain about missing debug-only code
+    def __repr__
+    
+    # Don't complain if tests don't hit defensive assertion code
+    raise AssertionError
+    raise NotImplementedError
+    
+    # Don't complain if non-runnable code isn't run
+    if __name__ == .__main__.:
+    
+    # Don't complain about abstract methods
+    @abstractmethod
+
+[html]
+# Directory for HTML coverage report
+directory = htmlcov
+

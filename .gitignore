@@ -1,0 +1,8 @@
+__pycache__/
+venv/
+addressbook.pkl
+test_addressbook.pkl
+
+# Coverage
+.coverage
+htmlcov/
