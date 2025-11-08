@@ -8,11 +8,12 @@ Commands act as Controller + View:
 import typer
 from dependency_injector.wiring import Provide, inject
 from rich.console import Console
+from typing import List
 
 from src.container import Container
 from src.services.contact_service import ContactService
 from src.utils.command_decorators import auto_save, handle_service_errors
-from src.utils.validators import validate_tag
+from src.utils.validators import validate_tag, split_tags_string, normalize_tag, is_valid_tag
 
 app = typer.Typer()
 console = Console()
@@ -23,22 +24,34 @@ console = Console()
 @auto_save
 def _tag_add_impl(
     name: str,
-    tag: str,
+    tags: list[str],
     service: ContactService = Provide[Container.contact_service],
     filename: str = Provide[Container.config.storage.filename],
 ):
-    msg = service.add_tag(name, tag)
-    console.print(f"[bold green]{msg}[/bold green]")
+    added = []
+    for t in tags:
+        n = normalize_tag(t)
+        if not is_valid_tag(n):
+            raise ValueError(f"Invalid tag: '{t}'")
+        service.add_tag(name, n)
+        added.append(n)
 
+    console.print(f"[bold green]Tags added to {name}: {', '.join(added)}[/bold green]")
 
 @app.command(name="tag-add")
 def tag_add_command(
     name: str = typer.Argument(..., help="Contact name"),
-    tag: str = typer.Argument(..., help="Tag (a-z0-9_-, 1..32)", callback=validate_tag),
+    tags_tokens: List[str] = typer.Argument(
+        ...,  
+        help='One or more tags or CSV chunks (quotes supported): ml "data,science",ai',
+        metavar="TAGS...",
+    ),
 ):
-    """Add a tag to a contact."""
-    return _tag_add_impl(name, tag)
-
+    """Add one or many tags to a contact."""
+    flat: List[str] = []
+    for tok in tags_tokens:
+        flat.extend(split_tags_string(tok))
+    return _tag_add_impl(name, flat)
 
 @inject
 @handle_service_errors

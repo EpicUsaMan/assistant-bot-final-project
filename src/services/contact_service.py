@@ -12,7 +12,24 @@ from src.models.address_book import AddressBook
 from src.models.record import Record
 from src.models.tags import Tags
 from src.utils.validators import is_valid_tag, normalize_tag, split_tags_string
+from enum import Enum
 
+#--- Contact sorting options ---
+class ContactSortBy(str, Enum):
+    '''
+        Enum for contact sorting criteria.
+        Attributes:
+            NAME: Sort by contact name
+            PHONE: Sort by phone number
+            BIRTHDAY: Sort by birthday date
+            TAG_COUNT: Sort by number of tags
+            TAG_NAME: Sort by tag names
+    '''
+    NAME = "name"
+    PHONE = "phone"
+    BIRTHDAY = "birthday"    
+    TAG_COUNT = "tag_count"
+    TAG_NAME = "tag_name"
 
 class ContactService:
     """
@@ -99,14 +116,32 @@ class ContactService:
 
         return "; ".join(p.value for p in record.phones)
 
-    def get_all_contacts(self) -> str:
+    def get_all_contacts(self, sort_by: "ContactSortBy | None" = None) -> str:
         """
         Get all contacts as a formatted string.
+
+        Args:
+            sort_by: Sorting criteria (or None for no sorting)
 
         Returns:
             Formatted string with all contacts or message if no contacts exist
         """
-        return str(self.address_book)
+        items = self.list_contacts(sort_by=sort_by)
+
+        if not items:
+            return "Address book is empty."
+
+        lines: list[str] = []
+        for name, rec in items:
+            phones = "; ".join(p.value for p in rec.phones) if rec.phones else ""
+            tags = ", ".join(rec.tags_list())
+            line = f"Contact name: {name}, phones: {phones}"
+            if tags:
+                line += f", tags: {tags}"
+            lines.append(line)
+
+        # double newlines between contacts as in CLI output
+        return "\n\n".join(lines)
 
     def add_birthday(self, name: str, birthday: str) -> str:
         """
@@ -228,13 +263,37 @@ class ContactService:
         """
         return len(self.address_book.data) > 0
 
-    def list_contacts(self, sort_by: Optional[str] = None) -> List[Tuple[str, Record]]:
-        """Return [(name, record)] optionally sorted by tags."""
+    def list_contacts(
+            self, 
+            sort_by: "ContactSortBy | None" = None,
+        ) -> List[Tuple[str, Record]]:
+        """
+        Return [(name, record)] optionally sorted.
+
+        Args:
+            sort_by: Sorting criteria
+
+        Returns:
+            List of (name, record) tuples
+        """
         items = list(self.address_book.data.items())
 
-        if sort_by == "tag_count":
+        if not sort_by:
+            return items
+        elif sort_by == ContactSortBy.NAME:
+            items.sort(key=lambda kv: kv[0].lower())
+        elif sort_by == ContactSortBy.PHONE:
+            items.sort(key=lambda kv: kv[1].phones[0].value if kv[1].phones else "")
+        elif sort_by == ContactSortBy.BIRTHDAY:
+            def _birthday_key(rec: Record):
+                if rec.birthday is None:
+                    return datetime.max.date()
+                # bring birthdays just as in _calculate_upcoming_birthdays
+                return rec.birthday.date.date()
+            items.sort(key=lambda kv: _birthday_key(kv[1]))
+        elif sort_by == ContactSortBy.TAG_COUNT:
             items.sort(key=lambda kv: len(kv[1].tags_list()), reverse=True)
-        elif sort_by == "tag_name":
+        elif sort_by == ContactSortBy.TAG_NAME:
             items.sort(key=lambda kv: ",".join(kv[1].tags_list()).lower())
 
         return items
@@ -316,7 +375,7 @@ class ContactService:
                 raise ValueError(f"Invalid tag: '{t}'")
             out.append(n)
         return out
-
+    
     # --- search by tags ---
     def find_by_tags_all(self, tags: List[str] | str) -> List[Tuple[str, "Record"]]:
         """

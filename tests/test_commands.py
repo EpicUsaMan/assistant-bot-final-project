@@ -17,7 +17,7 @@ from unittest.mock import Mock, patch
 from src.main import app, container
 from src.models.address_book import AddressBook
 from src.models.record import Record
-from src.services.contact_service import ContactService
+from src.services.contact_service import ContactService, ContactSortBy
 
 
 runner = CliRunner()
@@ -191,7 +191,7 @@ class TestAllCommand:
     """Tests for all command."""
     
     def test_all_with_contacts(self, mock_service):
-        """Test showing all contacts."""
+        """Test showing all contacts without sorting."""
         mock_service.has_contacts.return_value = True
         mock_service.get_all_contacts.return_value = "Contact name: John, phones: 1234567890"
         
@@ -200,16 +200,34 @@ class TestAllCommand:
             
         assert result.exit_code == 0
         assert "John" in result.stdout
+        # important: default sort_by=None
+        mock_service.get_all_contacts.assert_called_once_with(sort_by=None)
+    
+    def test_all_with_sort_by_name(self, mock_service):
+        """Test showing all contacts with sort-by=name."""
+        mock_service.has_contacts.return_value = True
+        mock_service.get_all_contacts.return_value = "Contact name: John, phones: 1234567890"
+        
+        with container.contact_service.override(mock_service):
+            result = runner.invoke(app, ["all", "--sort-by", "name"])
+            
+        assert result.exit_code == 0
+        assert "John" in result.stdout
+        # Typer converts "name" -> ContactSortBy.NAME
+        mock_service.get_all_contacts.assert_called_once_with(
+            sort_by=ContactSortBy.NAME
+        )
     
     def test_all_empty(self, mock_service):
-        """Test showing all contacts when empty."""
+        """Test showing all contacts when address book is empty."""
         mock_service.has_contacts.return_value = False
         
         with container.contact_service.override(mock_service):
             result = runner.invoke(app, ["all"])
             
         assert result.exit_code == 0
-        assert "No contacts" in result.stdout
+        assert "Address book is empty." in result.stdout
+        mock_service.get_all_contacts.assert_not_called()
 
 
 class TestAddBirthdayCommand:

@@ -66,6 +66,9 @@ python src/main.py
 python src/main.py add "John Doe" 1234567890
 python src/main.py add-birthday "John Doe" 15.05.1990
 python src/main.py all
+python src/main.py all --sort-by name
+python src/main.py all --sort-by tag_count
+python src/main.py all --sort-by tag_name
 python src/main.py birthdays
 ```
 
@@ -109,6 +112,13 @@ python src/main.py add "John Doe" 1234567890
 # Show all contacts
 python src/main.py all
 
+# Show all contacts sorted
+python src/main.py all --sort-by name
+python src/main.py all --sort-by phone
+python src/main.py all --sort-by birthday
+python src/main.py all --sort-by tag_count
+python src/main.py all --sort-by tag_name
+
 # Add a birthday
 python src/main.py add-birthday "John Doe" 15.05.1990
 
@@ -122,6 +132,10 @@ Rules: tags are lowercase, unique per contact; allowed `[a-z0-9_-]`, length `1..
 ```bash
 # CRUD
 python src/main.py tag-add "John Doe" ml
+# Multiple tags (args)
+python src/main.py tag-add "John" ml ai
+# Comma inside a quoted tag
+python src/main.py tag-add "John" "data,science"
 python src/main.py tag-list "John Doe"
 python src/main.py tag-remove "John Doe" ml
 python src/main.py tag-clear "John Doe"
@@ -129,8 +143,14 @@ python src/main.py tag-clear "John Doe"
 # Search
 python src/main.py find-by-tags "ai,ml"        # AND
 python src/main.py find-by-tags-any "ai,ml"    # OR
+# Search with CSV + quotes
+python src/main.py find-by-tags "data,science" ml
+python src/main.py find-by-tags-any ml ai
 
-# List sorting by tags
+# List sorting by tags and other fields
+python src/main.py all --sort-by name
+python src/main.py all --sort-by phone
+python src/main.py all --sort-by birthday
 python src/main.py all --sort-by tag_count
 python src/main.py all --sort-by tag_name
 
@@ -142,7 +162,7 @@ python src/main.py all --sort-by tag_name
 | `add` | name, phone | Add a new contact or add phone to existing contact |
 | `change` | name, old_phone, new_phone | Change an existing phone number |
 | `phone` | name | Show all phone numbers for a contact |
-| `all` | None | Show all contacts in the address book |
+| `all` | `[--sort-by MODE]` | Show all contacts in the address book (optionally sorted by `name`, `phone`, `birthday`, `tag_count`, or `tag_name`) |
 | `add-birthday` | name, birthday (DD.MM.YYYY) | Add a birthday date to a contact |
 | `show-birthday` | name | Show the birthday date for a contact |
 | `birthdays` | None | Show all upcoming birthdays for the next week |
@@ -412,8 +432,9 @@ Service layer encapsulating all business logic for contact operations. Injected 
   - Returns: Phone numbers separated by semicolons or "No phones" message
   - Raises: `ValueError` if contact not found
 
-- `get_all_contacts() -> str` - Get all contacts as formatted string
-  - Returns: Formatted string with all contacts or "Address book is empty"
+- `get_all_contacts(sort_by: ContactSortBy | None = None) -> str` - Get all contacts as formatted string
+  - Args: `sort_by` – optional sorting mode
+  - Returns: Formatted string with all contacts or "No contacts in the address book."
 
 **Tag Management:**
 - `add_tag(name: str, tag: str) -> str`
@@ -425,9 +446,16 @@ Service layer encapsulating all business logic for contact operations. Injected 
 - `find_by_tags_all(tags: list[str] | str) -> list[tuple[name, Record]]` — AND
 - `find_by_tags_any(tags: list[str] | str) -> list[tuple[name, Record]]` — OR
 
+ContactService uses `ContactSortBy` enum for sorting modes.
+
 **Listing with sorting:**
-- `list_contacts(sort_by: Optional[str]) -> list[tuple[name, Record]]`  
-  `sort_by ∈ { "tag_count", "tag_name", None }`
+- `list_contacts(sort_by: ContactSortBy | None = None) -> list[tuple[name, Record]]`  
+  Where `ContactSortBy` is an enum with values:
+  - `name` – sort by contact name (alphabetically, case-insensitive)
+  - `phone` – sort by first phone number
+  - `birthday` – sort by birthday date (contacts without birthday go last)
+  - `tag_count` – sort by number of tags (descending)
+  - `tag_name` – sort by tag names (contacts without tags go first)
 
 **Birthday Management:**
 - `add_birthday(name: str, birthday: str) -> str` - Add birthday to contact

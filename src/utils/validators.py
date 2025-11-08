@@ -92,9 +92,12 @@ def validate_email(value: str) -> str:
 # Tag validation utilities
 
 import re
+# splitting strings with commas safely
+import csv
+from io import StringIO
 
 # Regular expression for valid tags: lowercase letters, digits, underscores, hyphens, 1-32 chars
-_TAG_RE = re.compile(r"^[a-z0-9_-]{1,32}$")
+_TAG_RE = re.compile(r"^[a-z0-9_,\-]{1,32}$")
 
 
 def normalize_tag(tag: str) -> str:
@@ -116,11 +119,19 @@ def is_valid_tag(tag: str) -> bool:
 def split_tags_string(s: str) -> list[str]:
     """
     Split a comma-separated string into a list of tags.
+    Args:
+        s: Comma-separated tags string
+    Returns:
+        List of tag strings
+    
+    Tags with commas are supported if quoted.
     """
-    # "ai, ML ,  python" -> ["ai", "ML", "python"] (without normalization)
-    if not s:
+    # "ai, ML" ,  python -> ["ai, ML", "python"] (without normalization)
+    if not s or not s.strip():
         return []
-    return [p for p in (part.strip() for part in s.split(",")) if p]
+    reader = csv.reader(StringIO(s), skipinitialspace=True)
+    row = next(reader, [])
+    return [t.strip() for t in row if t and t.strip()]
 
 
 def validate_tag(value: str) -> str:
@@ -133,5 +144,5 @@ def validate_tag(value: str) -> str:
     """
     n = normalize_tag(value)
     if not is_valid_tag(n):
-        raise typer.BadParameter("Tag must match [a-z0-9_-] and be 1..32 chars")
+        raise typer.BadParameter("Tag must match [a-z0-9_,-] and be 1..32 chars")
     return n
