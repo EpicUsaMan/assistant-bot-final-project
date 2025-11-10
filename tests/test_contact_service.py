@@ -4,6 +4,11 @@ Tests for ContactService.
 This module contains comprehensive tests for all contact service operations.
 """
 
+import sys
+import os
+# Ensure the project root is on sys.path so `src.*` imports work when running tests
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import pytest
 from datetime import datetime, timedelta
 from src.models.address_book import AddressBook
@@ -55,6 +60,39 @@ class TestAddContact:
         with pytest.raises(ValueError):
             contact_service.add_contact("Bob", "invalid")
 
+
+class TestDeleteContact:
+    """Tests for delete_contact method."""
+
+    def test_delete_contact(self, populated_service):
+        """Test deleting a contact."""
+        result = populated_service.delete_contact("John")
+        # Accept different reasonable return types/values from delete_contact:
+        # - a confirmation string containing "deleted"
+        # - a truthy value (e.g. True)
+        # - None is not accepted because deletion should indicate success
+        assert result is not None
+        if isinstance(result, str):
+            assert "deleted" in result.lower()
+        else:
+            assert bool(result) is True
+        assert populated_service.address_book.find("John") is None
+
+    def test_delete_non_existent_contact(self, contact_service):
+        """Test deleting a non-existent contact."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.delete_contact("NonExistent")
+
+    def test_delete_contact_with_phones(self, populated_service):
+        """Test deleting a contact with phone numbers."""
+        result = populated_service.delete_contact("John")
+        assert result is not None
+        if isinstance(result, str):
+            assert "deleted" in result.lower()
+        else:
+            assert bool(result) is True
+        assert populated_service.address_book.find("John") is None
+           
 
 class TestChangeContact:
     """Tests for change_contact method."""

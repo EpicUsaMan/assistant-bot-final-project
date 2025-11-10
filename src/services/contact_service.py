@@ -5,6 +5,7 @@ This service provides business logic for contact operations with proper
 separation of concerns and dependency injection support.
 """
 
+from os import name
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta
 from src.models.address_book import AddressBook
@@ -52,6 +53,15 @@ class ContactService:
             record.add_phone(phone)
         return message
     
+    def delete_contact(self, name: str) -> str:
+        """Delete a contact from the address book."""
+        if name not in self.address_book.data:
+            raise ValueError(f"Contact '{name}' not found")
+        
+        del self.address_book.data[name]
+        return f"Contact '{name}' deleted successfully"
+
+
     def change_contact(self, name: str, old_phone: str, new_phone: str) -> str:
         """
         Change an existing contact's phone number.

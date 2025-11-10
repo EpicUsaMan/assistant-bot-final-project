@@ -138,6 +138,7 @@ def run_interactive():
         "  • [cyan]hello[/cyan] - Get a greeting\n"
         "  • [cyan]add[/cyan] [name] [phone] - Add a contact\n"
         "  • [cyan]change[/cyan] [name] [old_phone] [new_phone] - Change phone number\n"
+        "  • [cyan]delete[/cyan] [name] - Delete a contact\n"
         "  • [cyan]phone[/cyan] [name] - Show phone numbers\n"
         "  • [cyan]all[/cyan] - Show all contacts\n"
         "  • [cyan]add-birthday[/cyan] [name] [DD.MM.YYYY] - Add birthday\n"
@@ -175,8 +176,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
