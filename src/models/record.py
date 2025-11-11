@@ -8,6 +8,8 @@ from src.models.phone import Phone
 from src.models.tags import Tags
 from src.utils.validators import is_valid_tag, normalize_tag
 
+from src.models.group import DEFAULT_GROUP_ID
+
 
 class Record:
     """
@@ -20,7 +22,7 @@ class Record:
         tags: Contact's tags (Tags object)
     """
     
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, group_id: str = DEFAULT_GROUP_ID) -> None:
         """
         Initialize a contact record with a name.
         
@@ -31,6 +33,7 @@ class Record:
         self.phones: list[Phone] = []
         self.birthday: Optional[Birthday] = None
         self.tags = Tags()
+        self.group_id: str = group_id
 
     def add_phone(self, phone: str) -> None:
         """
@@ -121,6 +124,9 @@ class Record:
         self.__dict__.update(state)
         if "tags" not in self.__dict__:
             self.tags = Tags()
+        # compatibility for unpickling older records without group_id
+        if not hasattr(self, "group_id") or not self.group_id:
+            self.group_id = DEFAULT_GROUP_ID
 
     # --- Tags API ---
     def set_tags(self, tags: list[str] | str):

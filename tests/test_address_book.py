@@ -17,7 +17,10 @@ def test_address_book_add_record():
     record = Record("John")
     book.add_record(record)
     assert len(book.data) == 1
-    assert "John" in book.data
+    key = f"{book.current_group_id}:John"
+    assert key in book.data
+    rec = book.data[key]
+    assert rec.name.value == "John"
 
 
 def test_address_book_add_multiple_records():
@@ -27,7 +30,11 @@ def test_address_book_add_multiple_records():
     jane_record = Record("Jane")
     book.add_record(john_record)
     book.add_record(jane_record)
-    assert len(book.data) == 2
+    # keys now have group prefix
+    keys = list(book.data.keys())  # UPDATED
+    assert len(keys) == 2
+    assert f"{book.current_group_id}:John" in keys  # UPDATED
+    assert f"{book.current_group_id}:Jane" in keys  # UPDATED
 
 
 def test_address_book_add_duplicate_record_raises_error():
@@ -63,7 +70,9 @@ def test_address_book_delete_record():
     record = Record("John")
     book.add_record(record)
     book.delete("John")
-    assert len(book.data) == 0
+    # verify by prefixed key
+    key = f"{book.current_group_id}:John"
+    assert key not in book.data
 
 
 def test_address_book_delete_non_existent_record_raises_error():
@@ -111,9 +120,8 @@ def test_address_book_iteration():
     book.add_record(jane_record)
     
     names = [name for name in book.data.keys()]
-    assert "John" in names
-    assert "Jane" in names
-
+    assert f"{book.current_group_id}:John" in names  # UPDATED
+    assert f"{book.current_group_id}:Jane" in names  # UPDATED
 
 def test_address_book_userdict_functionality():
     """Test that AddressBook inherits UserDict functionality."""
@@ -121,6 +129,7 @@ def test_address_book_userdict_functionality():
     record = Record("John")
     book.add_record(record)
     
-    assert book["John"] == record
+    key = f"{book.current_group_id}:John"  # UPDATED
+    assert book[key] == record  # UPDATED
     assert len(book) == 1
 
