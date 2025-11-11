@@ -6,7 +6,7 @@ separation of concerns and dependency injection support.
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple, Any
 
 from src.models.address_book import AddressBook
 from src.models.record import Record
@@ -38,6 +38,36 @@ class ContactService:
     This class encapsulates all business logic for contact operations,
     making it easy to test and inject dependencies.
     """
+
+    DEFAULT_SORT_BY: ContactSortBy = ContactSortBy.NAME
+
+    # mapping: sort mode -> (key_fn, reverse_flag)
+    _SORTING_STRATEGIES: dict[ContactSortBy, tuple[Callable[[Tuple[str, Record]], Any], bool]] = {
+        ContactSortBy.NAME: (
+            lambda kv: kv[0].lower(),
+            False,
+        ),
+        ContactSortBy.PHONE: (
+            lambda kv: kv[1].phones[0].value if kv[1].phones else "",
+            False,
+        ),
+        ContactSortBy.BIRTHDAY: (
+            lambda kv: (
+                kv[1].birthday.date.date()
+                if kv[1].birthday
+                else datetime.max.date()
+            ),
+            False,
+        ),
+        ContactSortBy.TAG_COUNT: (
+            lambda kv: len(kv[1].tags_list()),
+            True,  # descending
+        ),
+        ContactSortBy.TAG_NAME: (
+            lambda kv: ",".join(kv[1].tags_list()).lower(),
+            False,
+        ),
+    }    
 
     def __init__(self, address_book: AddressBook) -> None:
         """
@@ -276,26 +306,18 @@ class ContactService:
         Returns:
             List of (name, record) tuples
         """
+
         items = list(self.address_book.data.items())
 
-        if not sort_by:
-            return items
-        elif sort_by == ContactSortBy.NAME:
-            items.sort(key=lambda kv: kv[0].lower())
-        elif sort_by == ContactSortBy.PHONE:
-            items.sort(key=lambda kv: kv[1].phones[0].value if kv[1].phones else "")
-        elif sort_by == ContactSortBy.BIRTHDAY:
-            def _birthday_key(rec: Record):
-                if rec.birthday is None:
-                    return datetime.max.date()
-                # bring birthdays just as in _calculate_upcoming_birthdays
-                return rec.birthday.date.date()
-            items.sort(key=lambda kv: _birthday_key(kv[1]))
-        elif sort_by == ContactSortBy.TAG_COUNT:
-            items.sort(key=lambda kv: len(kv[1].tags_list()), reverse=True)
-        elif sort_by == ContactSortBy.TAG_NAME:
-            items.sort(key=lambda kv: ",".join(kv[1].tags_list()).lower())
+        sorting = self._SORTING_STRATEGIES
+        effective_sort_by = sort_by or self.DEFAULT_SORT_BY
 
+        key_fn, reverse = sorting.get(
+            effective_sort_by,
+            sorting[self.DEFAULT_SORT_BY],
+        )
+
+        items.sort(key=key_fn, reverse=reverse)
         return items
 
     # --- Tags management ---
