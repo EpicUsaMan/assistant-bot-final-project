@@ -25,7 +25,6 @@ from datetime import datetime, date
 from phonenumbers.phonenumberutil import NumberParseException, PhoneNumberType
 
 _ACEPTED_PHONE_LEN = 10
-_MIN_YEAR = 1900
 _MAX_AGE_YEARS = 120
 _BDAY_FMT = "%d.%m.%Y"
 _EMAIL_RE = re.compile(r"^(?P<local>[A-Za-z0-9._%+-]+)@(?P<domain>[A-Za-z0-9.-]+\.[A-Za-z]{2,24})$")
