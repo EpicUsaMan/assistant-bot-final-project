@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from src.models.address_book import AddressBook
 from src.models.record import Record
 from src.services.contact_service import ContactService, ContactSortBy
+from src.models.group import DEFAULT_GROUP_ID
 
 
 @pytest.fixture
@@ -346,17 +347,234 @@ class TestSorting:
         """get_all_contacts should respect sort_by and use list_contacts under the hood."""
         calls = []
 
-        def fake_list_contacts(sort_by):
-            calls.append(sort_by)
-            # return in sorted order to verify output
+        def fake_list_contacts(sort_by, group=None):
+            calls.append((sort_by, group))
             return [("X", sorting_service.address_book.find("Pavlo"))]
 
         monkeypatch.setattr(sorting_service, "list_contacts", fake_list_contacts)
 
         result = sorting_service.get_all_contacts(sort_by=ContactSortBy.NAME)
         assert "Contact name: X" in result
-        # to be sure, that sort_by is passed to list_contacts
-        assert calls == [ContactSortBy.NAME]
+        # sort_by exist, group by default None
+        assert calls == [(ContactSortBy.NAME, None)]
 
+class TestGroupsService:
+    """Tests for groups support in ContactService."""
 
+    def test_list_groups_has_default_personal(self, contact_service):
+        """Empty address book has only default group with zero contacts."""
+        groups = contact_service.list_groups()
+        assert groups  # not empty
+        ids = [gid for gid, _ in groups]
+        assert DEFAULT_GROUP_ID in ids
+        # default has 0 contacts
+        default_entry = next((c for c in groups if c[0] == DEFAULT_GROUP_ID), None)
+        assert default_entry is not None
+        assert default_entry[1] == 0
 
+    def test_add_group_creates_new_group(self, contact_service):
+        """add_group registers new group in address book."""
+        contact_service.add_group("work")
+        groups = contact_service.list_groups()
+        ids = {gid for gid, _ in groups}
+        assert {DEFAULT_GROUP_ID, "work"} <= ids
+        assert contact_service.address_book.has_group("work")
+
+    def test_add_group_duplicate_raises(self, contact_service):
+        """add_group fails on duplicate group id."""
+        contact_service.add_group("work")
+        with pytest.raises(ValueError):
+            contact_service.add_group("work")
+
+    def test_set_current_group_success(self, contact_service):
+        """set_current_group switches active group."""
+        contact_service.add_group("work")
+        contact_service.set_current_group("work")
+        assert contact_service.get_current_group() == "work"
+
+    def test_set_current_group_not_found(self, contact_service):
+        """set_current_group fails for unknown group."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.set_current_group("unknown")
+
+    def test_add_contact_uses_current_group_by_default(self, contact_service):
+        """add_contact without explicit group uses current_group_id."""
+        contact_service.add_group("work")
+        contact_service.set_current_group("work")
+
+        contact_service.add_contact("Alice", "1234567890")
+
+        # find created record
+        records = list(contact_service.address_book.data.values())
+        rec = next(r for r in records if r.name.value == "Alice")
+        assert rec.group_id == "work"
+
+    def test_add_contact_explicit_group_overrides_current(self, contact_service):
+        """Explicit group_id in add_contact overrides current group."""
+        contact_service.add_group("work")
+        contact_service.set_current_group("work")
+
+        contact_service.add_contact("Bob", "1234567890", group_id="other")
+
+        records = list(contact_service.address_book.data.values())
+        rec = next(r for r in records if r.name.value == "Bob")
+        assert rec.group_id == "other"
+        # group 'other' should also be registered in address book
+        assert contact_service.address_book.has_group("other")
+
+class TestGroupsFiltering:
+    """Tests for group-based filtering in list_contacts/get_all_contacts."""
+
+    def test_list_contacts_filters_by_current_group(self, contact_service):
+        contact_service.add_group("work")
+        # current group = personal (DEFAULT)
+        contact_service.add_contact("Alice", "1111111111")  # personal
+        contact_service.set_current_group("work")
+        contact_service.add_contact("Bob", "2222222222")    # work
+
+        items = contact_service.list_contacts()  # default -> current (work)
+        names = [name for name, _ in items]
+        assert names == ["Bob"]
+
+    def test_list_contacts_filters_by_specific_group(self, contact_service):
+        contact_service.add_group("work")
+        contact_service.add_contact("Alice", "1111111111", group_id="personal")
+        contact_service.add_contact("Bob", "2222222222", group_id="work")
+
+        items_personal = contact_service.list_contacts(group="personal")
+        names_personal = [name for name, _ in items_personal]
+        assert names_personal == ["Alice"]
+
+        items_work = contact_service.list_contacts(group="work")
+        names_work = [name for name, _ in items_work]
+        assert names_work == ["Bob"]
+
+    def test_list_contacts_all_groups(self, contact_service):
+        contact_service.add_group("work")
+        contact_service.add_contact("Alice", "1111111111", group_id="personal")
+        contact_service.add_contact("Bob", "2222222222", group_id="work")
+
+        items_all = contact_service.list_contacts(group="all")
+        names_all = [name for name, _ in items_all]
+        assert set(names_all) == {"Alice", "Bob"}
+
+    def test_get_all_contacts_group_all_grouped_output(self, contact_service):
+        contact_service.add_group("work")
+        contact_service.add_contact("Alice", "1111111111", group_id="personal")
+        contact_service.add_contact("Bob", "2222222222", group_id="work")
+
+        out = contact_service.get_all_contacts(group="all")
+
+        # group header exists
+        assert "Group: personal" in out
+        assert "Group: work" in out
+        # names exists
+        assert "Alice" in out
+        assert "Bob" in out
+
+        # Alice has to be inside "personal" group
+        personal_block = out.split("Group: personal", 1)[1].split("Group:", 1)[0]
+        assert "Alice" in personal_block
+
+        # Bob has to be inside "work" group
+        work_block = out.split("Group: work", 1)[1]
+        assert "Bob" in work_block
+
+    def test_list_contacts_unknown_group_raises(self, contact_service):
+        with pytest.raises(ValueError, match="Group 'unknown' not found"):
+            contact_service.list_contacts(group="unknown")
+
+class TestGroupsIsolation:
+    """Tests that contacts with the same name are isolated per group."""
+
+    def _get_phones_by_group(self, service: ContactService, name: str) -> dict[str, list[str]]:
+        """Helper: {group_id: [phones]} for a given name."""
+        result: dict[str, list[str]] = {}
+        for rec in service.address_book.data.values():
+            if rec.name.value != name:
+                continue
+            gid = rec.group_id
+            result.setdefault(gid, []).extend(p.value for p in rec.phones)
+        return result
+
+    def test_get_phone_uses_current_group(self, contact_service):
+        """get_phone should read contact from current group only."""
+        svc = contact_service
+        svc.add_group("work")
+
+        # same name in two groups
+        svc.add_contact("John", "1111111111", group_id="personal")
+        svc.add_contact("John", "2222222222", group_id="work")
+
+        # personal
+        svc.set_current_group("personal")
+        out = svc.get_phone("John")
+        assert "1111111111" in out
+        assert "2222222222" not in out
+
+        # work
+        svc.set_current_group("work")
+        out = svc.get_phone("John")
+        assert "2222222222" in out
+        assert "1111111111" not in out
+
+    def test_change_contact_affects_only_current_group(self, contact_service):
+        """change_contact must update record only in current group."""
+        svc = contact_service
+        svc.add_group("work")
+
+        svc.add_contact("John", "1111111111", group_id="personal")
+        svc.add_contact("John", "2222222222", group_id="work")
+
+        # change in personal
+        svc.set_current_group("personal")
+        svc.change_contact("John", "1111111111", "3333333333")
+
+        phones = self._get_phones_by_group(svc, "John")
+        assert sorted(phones["personal"]) == ["3333333333"]
+        assert sorted(phones["work"]) == ["2222222222"]
+
+    def test_tags_are_isolated_per_group(self, contact_service):
+        """Tag operations for the same name are scoped to current group."""
+        svc = contact_service
+        svc.add_group("work")
+
+        svc.add_contact("John", "1111111111", group_id="personal")
+        svc.add_contact("John", "2222222222", group_id="work")
+
+        # personal: add and verify
+        svc.set_current_group("personal")
+        svc.add_tag("John", "friends")
+        assert svc.list_tags("John") == ["friends"]
+
+        # work: separate tags
+        svc.set_current_group("work")
+        svc.add_tag("John", "colleague")
+        assert svc.list_tags("John") == ["colleague"]
+
+        # back to personal: tags должны остаться только свои
+        svc.set_current_group("personal")
+        assert svc.list_tags("John") == ["friends"]
+
+    def test_clear_tags_only_in_current_group(self, contact_service):
+        """clear_tags should clear tags only for record in current group."""
+        svc = contact_service
+        svc.add_group("work")
+
+        svc.add_contact("John", "1111111111", group_id="personal")
+        svc.add_contact("John", "2222222222", group_id="work")
+
+        svc.set_current_group("personal")
+        svc.add_tag("John", "friends")
+
+        svc.set_current_group("work")
+        svc.add_tag("John", "colleague")
+
+        # clear only in work
+        svc.clear_tags("John")
+
+        svc.set_current_group("personal")
+        assert svc.list_tags("John") == ["friends"]
+
+        svc.set_current_group("work")
+        assert svc.list_tags("John") == []
