@@ -8,7 +8,7 @@ import pytest
 from datetime import datetime, timedelta
 from src.models.address_book import AddressBook
 from src.models.record import Record
-from src.services.contact_service import ContactService
+from src.services.contact_service import ContactService, ContactSortBy
 
 
 @pytest.fixture
@@ -31,6 +31,31 @@ def populated_service():
     record.add_phone("1234567890")
     record.add_birthday("15.05.1990")
     book.add_record(record)
+    return ContactService(book)
+
+@pytest.fixture
+def sorting_service():
+    """Create a contact service with multiple contacts for sorting tests."""
+    book = AddressBook()
+
+    pavlo = Record("Pavlo")
+    pavlo.add_phone("3333333333")
+    pavlo.add_birthday("15.05.1990")
+    pavlo.add_tag("ml")
+    pavlo.add_tag("ai")
+    book.add_record(pavlo)
+
+    anna = Record("Anna")
+    anna.add_phone("1111111111")
+    anna.add_birthday("01.01.1980")
+    anna.add_tag("ai")
+    book.add_record(anna)
+
+    illia = Record("Illia")
+    illia.add_phone("2222222222")
+    # no birthday, no tags
+    book.add_record(illia)
+
     return ContactService(book)
 
 
@@ -276,6 +301,62 @@ class TestHasContacts:
         """Test has_contacts with populated address book."""
         assert populated_service.has_contacts() is True
 
+class TestSorting:
+    """Tests for contact sorting logic."""
+
+    def test_list_contacts_sort_by_name(self, sorting_service):
+        """Contacts are sorted alphabetically by name (case-insensitive)."""
+        items = sorting_service.list_contacts(sort_by=ContactSortBy.NAME)
+        names = [name for name, _ in items]
+        assert names == ["Anna", "Illia", "Pavlo"]
+
+    def test_list_contacts_sort_by_phone(self, sorting_service):
+        """Contacts are sorted by first phone number."""
+        items = sorting_service.list_contacts(sort_by=ContactSortBy.PHONE)
+        names = [name for name, _ in items]
+        # 1111111111 < 2222222222 < 3333333333
+        assert names == ["Anna", "Illia", "Pavlo"]
+
+    def test_list_contacts_sort_by_birthday(self, sorting_service):
+        """Contacts are sorted by birthday, contacts without birthday go last."""
+        items = sorting_service.list_contacts(sort_by=ContactSortBy.BIRTHDAY)
+        names = [name for name, _ in items]
+        # Anna: 01.01.1980, Pavlo: 15.05.1990, Illia: no birthday -> last
+        assert names == ["Anna", "Pavlo", "Illia"]
+
+    def test_list_contacts_sort_by_tag_count(self, sorting_service):
+        """Contacts are sorted by tag count in descending order."""
+        items = sorting_service.list_contacts(sort_by=ContactSortBy.TAG_COUNT)
+        names = [name for name, _ in items]
+        # Pavlo: 2 tags, Anna: 1 tag, Illia: 0 tags
+        assert names == ["Pavlo", "Anna", "Illia"]
+
+    def test_list_contacts_sort_by_tag_name(self, sorting_service):
+        """
+        Contacts are sorted by tag names; contacts without tags use empty string
+        and therefore go first.
+        """
+        items = sorting_service.list_contacts(sort_by=ContactSortBy.TAG_NAME)
+        names = [name for name, _ in items]
+        # Illia: no tags -> key="", Anna: "ai", Pavlo: "ai,ml"/"ml,ai" -> above Anna
+        assert names[0] == "Illia"
+        assert names.index("Anna") < names.index("Pavlo")
+
+    def test_get_all_contacts_uses_list_contacts_sorting(self, sorting_service, monkeypatch):
+        """get_all_contacts should respect sort_by and use list_contacts under the hood."""
+        calls = []
+
+        def fake_list_contacts(sort_by):
+            calls.append(sort_by)
+            # return in sorted order to verify output
+            return [("X", sorting_service.address_book.find("Pavlo"))]
+
+        monkeypatch.setattr(sorting_service, "list_contacts", fake_list_contacts)
+
+        result = sorting_service.get_all_contacts(sort_by=ContactSortBy.NAME)
+        assert "Contact name: X" in result
+        # to be sure, that sort_by is passed to list_contacts
+        assert calls == [ContactSortBy.NAME]
 
 
 
