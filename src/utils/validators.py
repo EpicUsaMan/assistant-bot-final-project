@@ -18,22 +18,23 @@ Example:
         ...
 """
 
-import typer
 from datetime import datetime
+
+import typer
 
 
 def validate_phone(value: str) -> str:
     """
     Validate phone number format for CLI input.
-    
+
     Phone numbers must be exactly 10 digits.
-    
+
     Args:
         value: Phone number string
-        
+
     Returns:
         Validated phone number
-        
+
     Raises:
         typer.BadParameter: If phone format is invalid
     """
@@ -47,15 +48,15 @@ def validate_phone(value: str) -> str:
 def validate_birthday(value: str) -> str:
     """
     Validate birthday date format for CLI input.
-    
+
     Birthdays must be in DD.MM.YYYY format.
-    
+
     Args:
         value: Birthday string in DD.MM.YYYY format
-        
+
     Returns:
         Validated birthday string
-        
+
     Raises:
         typer.BadParameter: If date format is invalid
     """
@@ -71,15 +72,15 @@ def validate_birthday(value: str) -> str:
 def validate_email(value: str) -> str:
     """
     Validate email format for CLI input.
-    
+
     Example validator for future use with email validation library.
-    
+
     Args:
         value: Email string
-        
+
     Returns:
         Validated email string
-        
+
     Raises:
         typer.BadParameter: If email format is invalid
     """
@@ -87,3 +88,61 @@ def validate_email(value: str) -> str:
         raise typer.BadParameter("Invalid email format")
     return value
 
+
+# Tag validation utilities
+
+import re
+# splitting strings with commas safely
+import csv
+from io import StringIO
+
+# Regular expression for valid tags: lowercase letters, digits, underscores, hyphens, 1-32 chars
+_TAG_RE = re.compile(r"^[a-z0-9_,\-]{1,32}$")
+
+
+def normalize_tag(tag: str) -> str:
+    """
+    Normalize a tag by trimming whitespace, collapsing spaces, and converting to lowercase.
+    """
+    # trim → collapse spaces → lowercase
+    return " ".join(tag.strip().split()).lower()
+
+
+def is_valid_tag(tag: str) -> bool:
+    """
+    Check if a tag is valid according to the defined pattern.
+    """
+    # empty tags already handled in normalize_tag
+    return bool(tag) and bool(_TAG_RE.match(tag))
+
+
+def split_tags_string(s: str) -> list[str]:
+    """
+    Split a comma-separated string into a list of tags.
+    Args:
+        s: Comma-separated tags string
+    Returns:
+        List of tag strings
+    
+    Tags with commas are supported if quoted.
+    """
+    # "ai, ML" ,  python -> ["ai, ML", "python"] (without normalization)
+    if not s or not s.strip():
+        return []
+    reader = csv.reader(StringIO(s), skipinitialspace=True)
+    row = next(reader, [])
+    return [t.strip() for t in row if t and t.strip()]
+
+
+def validate_tag(value: str) -> str:
+    """
+    Validate a single tag for CLI input.
+    Args:
+        value: Tag string
+    Returns:
+        Validated tag string
+    """
+    n = normalize_tag(value)
+    if not is_valid_tag(n):
+        raise typer.BadParameter("Tag must match [a-z0-9_,-] and be 1..32 chars")
+    return n

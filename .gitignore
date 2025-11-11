@@ -6,3 +6,5 @@ test_addressbook.pkl
 # Coverage
 .coverage
 htmlcov/
+.vscode/settings.json
+.vscode/

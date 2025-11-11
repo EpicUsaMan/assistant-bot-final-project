@@ -1,9 +1,12 @@
 """Contact record class for storing contact information."""
 
 from typing import Optional
+
+from src.models.birthday import Birthday
 from src.models.name import Name
 from src.models.phone import Phone
-from src.models.birthday import Birthday
+from src.models.tags import Tags
+from src.utils.validators import is_valid_tag, normalize_tag
 
 
 class Record:
@@ -14,6 +17,7 @@ class Record:
         name: Contact's name (Name object)
         phones: List of phone numbers (Phone objects)
         birthday: Contact's birthday (Birthday object, optional)
+        tags: Contact's tags (Tags object)
     """
     
     def __init__(self, name: str) -> None:
@@ -26,7 +30,8 @@ class Record:
         self.name = Name(name)
         self.phones: list[Phone] = []
         self.birthday: Optional[Birthday] = None
-    
+        self.tags = Tags()
+
     def add_phone(self, phone: str) -> None:
         """
         Add a phone number to the contact.
@@ -111,3 +116,64 @@ class Record:
     def __repr__(self) -> str:
         return f"Record(name={self.name.value!r}, phones={[p.value for p in self.phones]})"
 
+    def __setstate__(self, state: dict):
+        # baclkward compatibility for unpickling older records without tags
+        self.__dict__.update(state)
+        if "tags" not in self.__dict__:
+            self.tags = Tags()
+
+    # --- Tags API ---
+    def set_tags(self, tags: list[str] | str):
+        """
+        Replace all tags at once. Accepts list or comma-separated string.
+        Args:
+            tags: List of tags or comma-separated string of tags
+        """
+        if isinstance(tags, str):
+            from src.utils.validators import split_tags_string
+
+            tags = split_tags_string(tags)
+        self.tags.replace(tags)
+
+    def add_tag(self, tag: str) -> None:
+        """
+        Add a single tag.
+        Args:
+            tag: Tag to add
+        Raises:
+            ValueError: If tag format is invalid
+        """
+        n = normalize_tag(tag)
+        if not is_valid_tag(n):
+            raise ValueError(f"Invalid tag: '{tag}'")
+        self.tags.add(n)
+
+    def remove_tag(self, tag: str) -> None:
+        """
+        Remove a single tag.
+        Args:
+            tag: Tag to remove
+        """
+        n = normalize_tag(tag)
+        self.tags.remove(n)
+
+    def clear_tags(self) -> None:
+        """
+        Clear all tags.
+        """
+        self.tags.clear()
+
+    def tags_list(self) -> list[str]:
+        return self.tags.as_list()
+
+    def has_tags_all(self, tags: list[str]) -> bool:
+        """
+        Return True if note has *all* of tags (AND).
+        """
+        return all(t in self.tags.as_list() for t in tags)
+
+    def has_tags_any(self, tags: list[str]) -> bool:
+        """
+        Return True if note has *any* of tags (OR).
+        """
+        return any(t in self.tags.as_list() for t in tags)
