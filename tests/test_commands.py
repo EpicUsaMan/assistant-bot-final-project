@@ -200,11 +200,13 @@ class TestAllCommand:
             
         assert result.exit_code == 0
         assert "John" in result.stdout
-        # important: default sort_by=None
-        mock_service.get_all_contacts.assert_called_once_with(sort_by=None)
-    
+        # important: default sort_by=None, group=None
+        mock_service.get_all_contacts.assert_called_once_with(sort_by=None, group=None)
+
     def test_all_with_sort_by_name(self, mock_service):
         """Test showing all contacts with sort-by=name."""
+        from src.services.contact_service import ContactSortBy
+
         mock_service.has_contacts.return_value = True
         mock_service.get_all_contacts.return_value = "Contact name: John, phones: 1234567890"
         
@@ -213,9 +215,9 @@ class TestAllCommand:
             
         assert result.exit_code == 0
         assert "John" in result.stdout
-        # Typer converts "name" -> ContactSortBy.NAME
         mock_service.get_all_contacts.assert_called_once_with(
-            sort_by=ContactSortBy.NAME
+            sort_by=ContactSortBy.NAME,
+            group=None,
         )
     
     def test_all_empty(self, mock_service):
@@ -228,7 +230,6 @@ class TestAllCommand:
         assert result.exit_code == 0
         assert "Address book is empty." in result.stdout
         mock_service.get_all_contacts.assert_not_called()
-
 
 class TestAddBirthdayCommand:
     """Tests for add-birthday command."""
