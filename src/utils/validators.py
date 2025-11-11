@@ -148,12 +148,6 @@ def validate_birthday(value: str) -> str:
             f"Birthday implies age {age}, which is not allowed (max {_MAX_AGE_YEARS})"
         )
 
-    # Reasonable year bound
-    if bday.year < _MIN_YEAR:
-        raise typer.BadParameter(
-            f"Year must be greater than {_MIN_YEAR}"
-        )
-
     return bday.strftime(_BDAY_FMT)  # normalize formatting
 
 
