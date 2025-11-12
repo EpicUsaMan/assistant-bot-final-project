@@ -200,7 +200,7 @@ class ContactService:
 
             # contacts in group
             for name, rec in items:
-                phones = "; ".join(p.value for p in rec.phones) if rec.phones else ""
+                phones = "; ".join(p.display_value for p in rec.phones) if rec.phones else ""
                 tags = ", ".join(rec.tags_list())
                 line = f"  Contact name: {name}, phones: {phones}"
                 if tags:
