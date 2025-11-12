@@ -54,3 +54,36 @@ class TestGroupsCLI:
         assert "Current group set to 'work'" in r.stdout
         mock_service.set_current_group.assert_called_once_with("work")
         mock_service.address_book.save_to_file.assert_called_once()
+
+    def test_group_rename_uses_service(self, mock_service):
+        mock_service.rename_group.return_value = "Group 'work' renamed to 'team'."
+
+        with container.contact_service.override(mock_service):
+            r = runner.invoke(app, ["group-rename", "work", "team"])
+
+        assert r.exit_code == 0, r.stdout
+        mock_service.rename_group.assert_called_once_with("work", "team")
+        mock_service.address_book.save_to_file.assert_called_once()
+        assert "renamed" in r.stdout.lower()
+
+    def test_group_remove_without_force(self, mock_service):
+        mock_service.remove_group.return_value = "Group 'work' removed."
+
+        with container.contact_service.override(mock_service):
+            r = runner.invoke(app, ["group-remove", "work"])
+
+        assert r.exit_code == 0, r.stdout
+        mock_service.remove_group.assert_called_once_with("work", force=False)
+        mock_service.address_book.save_to_file.assert_called_once()
+        assert "removed" in r.stdout.lower()
+
+    def test_group_remove_with_force(self, mock_service):
+        mock_service.remove_group.return_value = "Group 'work' and its contacts removed."
+
+        with container.contact_service.override(mock_service):
+            r = runner.invoke(app, ["group-remove", "work", "--force"])
+
+        assert r.exit_code == 0, r.stdout
+        mock_service.remove_group.assert_called_once_with("work", force=True)
+        mock_service.address_book.save_to_file.assert_called_once()
+        assert "contacts" in r.stdout.lower()

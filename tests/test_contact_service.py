@@ -578,3 +578,37 @@ class TestGroupsIsolation:
 
         svc.set_current_group("work")
         assert svc.list_tags("John") == []
+
+class TestGroupsServiceAPI:
+    """Tests for ContactService group management wrappers."""
+
+    def test_rename_group_message_and_delegation(self, contact_service):
+        # setup: add group and records
+        contact_service.add_group("friends")
+        contact_service.add_contact("John", "1111111111", group_id="friends")
+
+        msg = contact_service.rename_group("friends", "buddies")
+        assert "friends" in msg and "buddies" in msg
+
+        # test group renaming
+        ab = contact_service.address_book
+        assert not ab.has_group("friends")
+        assert ab.has_group("buddies")
+
+        # record still in new group
+        found = ab.find("John", group_id="buddies")
+        assert found is not None
+        assert found.group_id == "buddies"
+
+    def test_remove_group_force_removes_contacts(self, contact_service):
+        contact_service.add_group("work")
+        contact_service.add_contact("John", "1111111111", group_id="work")
+
+        msg = contact_service.remove_group("work", force=True)
+        assert "work" in msg
+
+        ab = contact_service.address_book
+        assert not ab.has_group("work")
+        # no contacts in work group
+        for key in ab.data.keys():
+            assert not key.startswith("work:")

@@ -89,3 +89,49 @@ def group_use_command(
 ):
     """Switch active contact group."""
     return _group_use_impl(group_id=group_id)
+
+@inject
+@handle_service_errors
+@auto_save
+def _group_rename_impl(
+    old_id: str,
+    new_id: str,
+    service: ContactService = Provide[Container.contact_service],
+    filename: str = Provide[Container.config.storage.filename],
+):
+    msg = service.rename_group(old_id, new_id)
+    console.print(f"[green]{msg}[/green]")
+
+
+@app.command(name="group-rename")
+def group_rename_command(
+    old_id: str = typer.Argument(..., help="Existing group id"),
+    new_id: str = typer.Argument(..., help="New group id"),
+):
+    """Rename a contact group."""
+    return _group_rename_impl(old_id=old_id, new_id=new_id)
+
+@inject
+@handle_service_errors
+@auto_save
+def _group_remove_impl(
+    group_id: str,
+    force: bool = False,
+    service: ContactService = Provide[Container.contact_service],
+    filename: str = Provide[Container.config.storage.filename],
+):
+    msg = service.remove_group(group_id, force=force)
+    console.print(f"[yellow]{msg}[/yellow]")
+
+
+@app.command(name="group-remove")
+def group_remove_command(
+    group_id: str = typer.Argument(..., help="Group id to remove"),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Delete group even if it has contacts",
+    ),
+):
+    """Remove a contact group (optionally with its contacts)."""
+    return _group_remove_impl(group_id=group_id, force=force)

@@ -48,7 +48,11 @@ Python 3.10 or higher required
 - **Type hints** throughout codebase
 - **Pickle-based persistence** with automatic serialization
 - **Comprehensive documentation** with examples
-- Tagging: per-contact tags, tag-based search (AND/OR), and tag-aware sorting
+- **Tagging**: per-contact tags, tag-based search (AND/OR), and tag-aware sorting
+- **Contact groups**: each contact belongs to exactly one group (e.g. `personal`, `work`).
+- **Names are unique within a group**, not globally.
+- **Current active group**: all commands use it by default.
+- **Group-aware listing and search**: filter contacts by group or show all groups.
 
 ## Installation
 
@@ -173,6 +177,48 @@ python src/main.py all --sort-by tag_name
 | `find-by-tags`       | "t1,t2"                               | Find contacts that have **ALL** tags (AND)               |
 | `find-by-tags-any`   | "t1,t2"                               | Find contacts that have **ANY** tag (OR)                 |
 | `interactive` | None | Start interactive REPL mode |
+| `group-list`    | None                          | Show all groups with contact counts and current mark |
+| `group-add`     | `<group_id>`                  | Create a new group                                   |
+| `group-use`     | `<group_id>`                  | Switch active group                                  |
+
+### Groups: CLI usage
+
+Basic workflow for managing groups and grouped contacts:
+
+```bash
+# List all groups with contact counts, current group is marked
+python src/main.py group-list
+
+# Create a new group
+python src/main.py group-add work
+
+# Switch active group
+python src/main.py group-use work
+
+# Add contacts into the current group (here: work)
+python src/main.py add "John Doe" 1234567890
+
+# Switch back to personal and add another contact
+python src/main.py group-use personal
+python src/main.py add "Alice" 1111111111
+
+# Show contacts only from the current group (default behaviour)
+python src/main.py all
+
+# Show contacts only from a specific group
+python src/main.py all --group work
+
+# Show contacts from all groups, grouped in output
+python src/main.py all --group all
+```
+
+In interactive mode the prompt shows the current group, for example:
+
+```text
+[personal] >
+[work] >
+```
+
 
 ## Project Structure
 
@@ -485,6 +531,45 @@ ContactService uses `ContactSortBy` enum for sorting modes.
 - Contains NO presentation logic (no Rich formatting)
 - All business logic lives here (not in commands or models)
 
+## Contact Groups
+
+The address book supports **contact groups** (for example: `personal`, `work`, `family`, `other`) to organize contacts and scope name uniqueness.
+
+### Core ideas
+
+- Each contact belongs to **exactly one group**.
+- Default group id: **`personal`**.
+- Contact names are **unique within a group**, not globally.
+- Every record stores its group in `Record.group_id`.
+- The address book keeps:
+  - `AddressBook.groups: dict[str, Group]` – registry of known groups.
+  - `AddressBook.current_group_id: str` – id of the currently active group.
+
+### Models
+
+- `Group` (`src/models/group.py`)
+  - `id: str` – normalized group identifier (e.g. `work`, `personal`).
+  - `title: str | None` – optional human‑readable title.
+  - `DEFAULT_GROUP_ID = "personal"`.
+  - Helper: `normalize_group_id(group_id: str) -> str`.
+
+- `Record` (`src/models/record.py`)
+  - Extra field: `group_id: str | None` – id of the group this contact belongs to.
+  - `__setstate__` keeps backward compatibility:
+    - Adds `tags` for old pickles that do not have it.
+    - Ensures `group_id` exists (defaults to `personal` for old data).
+
+- `AddressBook` (`src/models/address_book.py`)
+  - New attributes:
+    - `groups: dict[str, Group]`
+    - `current_group_id: str`
+  - Group API:
+    - `add_group(group_id: str, title: str | None = None) -> Group`
+    - `has_group(group_id: str) -> bool`
+    - `iter_groups() -> Iterable[Group]`
+    - `iter_group(group_id: str) -> list[tuple[str, Record]]` – contacts of a single group.
+    - `iter_all() -> list[tuple[str, Record]]` – contacts from all groups.
+
 ## Utilities
 
 ### Validators (`src/utils/validators.py`)
@@ -684,6 +769,23 @@ container.config.storage.filename.from_value("addressbook.pkl")
 ```
 
 Or via environment variables or config files using dependency-injector's configuration system.
+
+### Groups migration (backward compatibility)
+
+Existing `addressbook.pkl` files created **before** groups existed are migrated automatically when loaded:
+
+- Old records without `tags` get an empty `Tags()` instance.
+- Old records without `group_id` are assigned to the default group `personal`.
+- Old keys stored as just `"John"` are migrated to the new format `"personal:John"`.
+- Any `group_id` found in records but missing in `AddressBook.groups` is auto‑registered as a `Group`.
+
+This logic lives in:
+
+- `Record.__setstate__` – adds missing `tags` / `group_id` on unpickling.
+- `AddressBook.load_from_file` – creates `groups`, `current_group_id`, and rewrites keys to the `<group_id>:<name>` scheme when necessary.
+
+No manual migration steps are required – just run the updated application and the data will be upgraded in memory before the next save.
+
 
 ## Examples
 

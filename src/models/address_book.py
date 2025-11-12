@@ -21,7 +21,7 @@ class AddressBook(UserDict):
     """
     
     # unique key for record
-    def _make_key(self, name: str, group_id: str) -> str:
+    def _make_key(self, name: str, group_id: str|None) -> str:
         gid = group_id or self.current_group_id
         return f"{gid}:{name}"
 
@@ -45,6 +45,8 @@ class AddressBook(UserDict):
             ValueError: If record with this name already exists
         """
         gid = record.group_id or self.current_group_id
+        record.group_id = gid
+        
         key = self._make_key(record.name.value, gid)
         if key in self.data:
             raise ValueError(
@@ -150,6 +152,31 @@ class AddressBook(UserDict):
             if gid not in book.groups:
                 book.groups[gid] = Group(gid)
 
+        if not getattr(book, "current_group_id", None):
+            book.current_group_id = DEFAULT_GROUP_ID
+
+        needs_key_migration = any(":" not in k for k in book.data.keys())
+
+        if needs_key_migration:
+            new_data: dict[str, "Record"] = {}
+            for key, rec in book.data.items():
+                if ":" in key:
+                    gid, name = key.split(":", 1)
+                else:
+                    # old format: key = name, group_id in record
+                    gid = rec.group_id or DEFAULT_GROUP_ID
+                    name = key
+
+                gid = normalize_group_id(gid)
+                rec.group_id = gid 
+                new_key = f"{gid}:{name}"
+                new_data[new_key] = rec
+                
+                if gid not in book.groups:
+                    book.groups[gid] = Group(gid)
+
+            book.data = new_data            
+
         return book
     
     # --- Groups API ---
@@ -187,3 +214,68 @@ class AddressBook(UserDict):
             _, name = key.split(":", 1)
             result.append((name, rec))
         return result
+
+    def rename_group(self, old_id: str, new_id: str) -> None:
+        old_gid = normalize_group_id(old_id)
+        new_gid = normalize_group_id(new_id)
+
+        if old_gid not in self.groups:
+            raise ValueError(f"Group '{old_gid}' not found.")
+        if new_gid in self.groups:
+            raise ValueError(f"Group '{new_gid}' already exists.")
+
+        group = self.groups.pop(old_gid)
+        group.id = new_gid
+        self.groups[new_gid] = group
+
+        # rename keys + update
+        new_data: dict[str, Record] = {}
+        old_prefix = f"{old_gid}:"
+        new_prefix = f"{new_gid}:"
+
+        for key, rec in self.data.items():
+            if key.startswith(old_prefix):
+                name = key[len(old_prefix):]
+                rec.group_id = new_gid
+                new_key = f"{new_gid}:{name}"
+                new_data[new_key] = rec
+            else:
+                new_data[key] = rec
+
+        self.data = new_data
+
+        # if renamed current group - update current_group_id
+        if self.current_group_id == old_gid:
+            self.current_group_id = new_gid
+
+    def remove_group(self, group_id: str, *, force: bool = False) -> None:
+        gid = normalize_group_id(group_id)
+
+        if gid == DEFAULT_GROUP_ID:
+            raise ValueError("Default group cannot be removed.")
+        if gid not in self.groups:
+            raise ValueError(f"Group '{gid}' not found.")
+
+        # exist contacts in group
+        has_contacts = any(
+            k.startswith(f"{gid}:") for k in self.data.keys()
+        )
+        if has_contacts and not force:
+            raise ValueError(
+                f"Group '{gid}' is not empty. Use force=True to delete with contacts."
+            )
+
+        if has_contacts and force:
+            # delete all contacts
+            prefix = f"{gid}:"
+            self.data = {
+                k: v for k, v in self.data.items()
+                if not k.startswith(prefix)
+            }
+
+        # delete group
+        del self.groups[gid]
+
+        # if deleted current - switch to default
+        if self.current_group_id == gid:
+            self.current_group_id = DEFAULT_GROUP_ID

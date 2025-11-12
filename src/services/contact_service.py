@@ -527,3 +527,13 @@ class ContactService:
             ValueError: if group id invalid or already exists.
         """
         self.address_book.add_group(group_id, title)
+
+    def rename_group(self, old_id: str, new_id: str) -> str:
+        self.address_book.rename_group(old_id, new_id)
+        return f"Group '{old_id}' renamed to '{new_id}'."
+
+    def remove_group(self, group_id: str, force: bool = False) -> str:
+        self.address_book.remove_group(group_id, force=force)
+        if force:
+            return f"Group '{group_id}' and its contacts removed."
+        return f"Group '{group_id}' removed."        
