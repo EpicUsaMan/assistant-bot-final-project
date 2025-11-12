@@ -8,6 +8,8 @@ from src.models.phone import Phone
 from src.models.tags import Tags
 from src.utils.validators import is_valid_tag, normalize_tag
 
+from src.models.group import DEFAULT_GROUP_ID
+
 
 class Record:
     """
@@ -20,7 +22,7 @@ class Record:
         tags: Contact's tags (Tags object)
     """
     
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, group_id: str | None = None) -> None:
         """
         Initialize a contact record with a name.
         
@@ -31,6 +33,7 @@ class Record:
         self.phones: list[Phone] = []
         self.birthday: Optional[Birthday] = None
         self.tags = Tags()
+        self.group_id: str | None = group_id
 
     def add_phone(self, phone: str) -> None:
         """
@@ -116,11 +119,18 @@ class Record:
     def __repr__(self) -> str:
         return f"Record(name={self.name.value!r}, phones={[p.value for p in self.phones]})"
 
-    def __setstate__(self, state: dict):
-        # baclkward compatibility for unpickling older records without tags
+    def __getstate__(self) -> dict:
+        return self.__dict__
+
+    def __setstate__(self, state: dict) -> None:
+        """Backward compatibility for old pickles (no tags / no group_id)."""
         self.__dict__.update(state)
+
         if "tags" not in self.__dict__:
             self.tags = Tags()
+
+        if not hasattr(self, "group_id") or not self.group_id:
+            self.group_id = DEFAULT_GROUP_ID
 
     # --- Tags API ---
     def set_tags(self, tags: list[str] | str):

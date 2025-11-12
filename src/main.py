@@ -17,9 +17,11 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 import typer
+import click
 from rich.console import Console
 from rich.panel import Panel
 from src.container import Container
+from src.services.contact_service import ContactService
 
 app = typer.Typer(
     name="assistant-bot",
@@ -35,6 +37,55 @@ container.config.storage.filename.from_value("addressbook.pkl")
 _container_wired = False
 _commands_registered = False
 
+def _make_group_prompt() -> str:
+    """Return dynamic prompt with current group id."""
+    service: ContactService = container.contact_service()
+    group_id = service.get_current_group()
+    return f"[{group_id}] > "
+
+
+def _iter_commands() -> list[tuple[str, str]]:
+    """Collect (name, help) for top-level commands, skipping internal ones."""
+    root_cmd: click.Command = typer.main.get_command(app)
+    result: list[tuple[str, str]] = []
+
+    for name, cmd in root_cmd.commands.items():
+        # filter tech commands if needed
+        if name in {"interactive"}:
+            continue
+        help_line = (cmd.help or "").strip().splitlines()[0] if cmd.help else ""
+        result.append((name, help_line))
+
+    # sorted by name
+    result.sort(key=lambda x: x[0])
+    return result
+
+
+def _build_welcome_text() -> str:
+    lines: list[str] = [
+        "[bold green]Welcome to the Assistant Bot![/bold green]\n",
+        "Available commands:",
+    ]
+    for name, help_line in _iter_commands():
+        if help_line:
+            lines.append(f"  • [cyan]{name}[/cyan] - {help_line}")
+        else:
+            lines.append(f"  • [cyan]{name}[/cyan]")
+    lines.append(
+        "\nType [cyan]--help[/cyan] after any command to see details, "
+        "e.g. [cyan]add --help[/cyan]."
+    )
+    return "\n".join(lines)
+
+
+def _print_welcome_panel() -> None:
+    console.print(
+        Panel(
+            _build_welcome_text(),
+            title="[bold]Assistant Bot[/bold]",
+            border_style="green",
+        )
+    )
 
 def auto_register_commands():
     """
@@ -97,36 +148,15 @@ def interactive():
     Start interactive REPL mode.
     """
     from click_repl import repl
-    from click import Context
+    from click import Context, prompt
     
-    console.print(Panel(
-        "[bold green]Welcome to the Assistant Bot![/bold green]\n\n"
-        "Available commands:\n"
-        "  • [cyan]hello[/cyan] - Get a greeting\n"
-        "  • [cyan]add[/cyan] [name] [phone] - Add a contact\n"
-        "  • [cyan]change[/cyan] [name] [old_phone] [new_phone] - Change phone number\n"
-        "  • [cyan]phone[/cyan] [name] - Show phone numbers\n"
-        "  • [cyan]all[/cyan] [---sort-by tag_count|tag_name] - Show all contacts (optional sorting)\n"
-        "  • [cyan]add-birthday[/cyan] [name] [DD.MM.YYYY] - Add birthday\n"
-        "  • [cyan]show-birthday[/cyan] [name] - Show birthday\n"
-        "  • [cyan]birthdays[/cyan] - Show upcoming birthdays\n"
-        "  • [cyan]tag-add[/cyan] [name] [TAGS...] - Add one or many tags; CSV/quotes supported\n"
-        "      e.g. tag-add John ml \"data,science\",ai\n"
-        "  • [cyan]tag-remove[/cyan] [name] [tag] - Remove a tag\n"
-        "  • [cyan]tag-clear[/cyan] [name] - Clear all tags\n"
-        "  • [cyan]tag-list[/cyan] [name] - List tags of a contact\n"
-        "  • [cyan]find-by-tags[/cyan] [TAGS...] - Find contacts with ALL tags (AND)\n"
-        "      e.g. find-by-tags ml \"data,science\"\n"
-        "  • [cyan]find-by-tags-any[/cyan] [TAGS...] - Find contacts with ANY tag (OR)\n"
-        "  • [cyan]exit[/cyan] or [cyan]quit[/cyan] - Exit the program\n",
-        title="[bold]Assistant Bot[/bold]",
-        border_style="green"
-    ))
-    
+    _print_welcome_panel()
+
     ctx = Context(typer.main.get_command(app))
-    
+    prompt_kwargs = {"message": _make_group_prompt}
+
     try:
-        repl(ctx)
+        repl(ctx, prompt_kwargs=prompt_kwargs)
     except (EOFError, KeyboardInterrupt):
         console.print("\n[bold green]Good bye![/bold green]")
 
@@ -139,36 +169,16 @@ def run_interactive():
     Commands are registered and wired by auto_register_commands().
     """
     auto_register_commands()
-    
-    console.print(Panel(
-        "[bold green]Welcome to the Assistant Bot![/bold green]\n\n"
-        "Available commands:\n"
-        "  • [cyan]hello[/cyan] - Get a greeting\n"
-        "  • [cyan]add[/cyan] [name] [phone] - Add a contact\n"
-        "  • [cyan]change[/cyan] [name] [old_phone] [new_phone] - Change phone number\n"
-        "  • [cyan]phone[/cyan] [name] - Show phone numbers\n"
-        "  • [cyan]all[/cyan] [---sort-by tag_count|tag_name] - Show all contacts (optional sorting)\n"
-        "  • [cyan]add-birthday[/cyan] [name] [DD.MM.YYYY] - Add birthday\n"
-        "  • [cyan]show-birthday[/cyan] [name] - Show birthday\n"
-        "  • [cyan]birthdays[/cyan] - Show upcoming birthdays\n"
-        "  • [cyan]tag-add[/cyan] [name] [TAGS...] - Add one or many tags; CSV/quotes supported\n"
-        "      e.g. tag-add John ml \"data,science\",ai\n"
-        "  • [cyan]tag-remove[/cyan] [name] [tag] - Remove a tag\n"
-        "  • [cyan]tag-clear[/cyan] [name] - Clear all tags\n"
-        "  • [cyan]tag-list[/cyan] [name] - List tags of a contact\n"
-        "  • [cyan]find-by-tags[/cyan] [TAGS...] - Find contacts with ALL tags (AND)\n"
-        "      e.g. find-by-tags ml \"data,science\"\n"
-        "  • [cyan]find-by-tags-any[/cyan] [TAGS...] - Find contacts with ANY tag (OR)\n"
-        "  • [cyan]exit[/cyan] or [cyan]quit[/cyan] - Exit the program\n",
-        title="[bold]Assistant Bot[/bold]",
-        border_style="green"
-    ))
-    
+    from click_repl import repl
+    from click import Context
+
+    _print_welcome_panel()
+
+    ctx = Context(typer.main.get_command(app))
+    prompt_kwargs = {"message": _make_group_prompt}
+
     try:
-        from click_repl import repl
-        from click import Context
-        ctx = Context(typer.main.get_command(app))
-        repl(ctx)
+        repl(ctx, prompt_kwargs=prompt_kwargs)
     except (EOFError, KeyboardInterrupt):
         console.print("\n[bold green]Good bye![/bold green]")
 

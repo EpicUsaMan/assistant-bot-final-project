@@ -25,3 +25,32 @@ def test_all_sort_by_tags():
         assert r.exit_code == 0, r.stdout
         out = r.stdout
         assert out.index("Anna") < out.index("Pavlo")
+
+def test_all_group_filter_current_and_all():
+    auto_register_commands()
+    with runner.isolated_filesystem():
+        # default personal
+        runner.invoke(app, ["group-add", "work"])
+        runner.invoke(app, ["add", "Alice", "1111111111"])  # personal
+        runner.invoke(app, ["group-use", "work"])
+        runner.invoke(app, ["add", "Bob", "2222222222"])    # work
+
+        # default (current group = work)
+        r = runner.invoke(app, ["all"])
+        assert r.exit_code == 0, r.stdout
+        out = r.stdout
+        assert "Bob" in out
+        assert "Alice" not in out
+
+        # explicit personal
+        r = runner.invoke(app, ["all", "--group", "personal"])
+        out = r.stdout
+        assert "Alice" in out
+        assert "Bob" not in out
+
+        # all groups
+        r = runner.invoke(app, ["all", "--group", "all"])
+        out = r.stdout
+        assert "Alice" in out and "Bob" in out
+        assert "Group: personal" in out
+        assert "Group: work" in out
