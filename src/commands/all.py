@@ -14,10 +14,46 @@ from rich.panel import Panel
 from src.container import Container
 from src.services.contact_service import ContactService, ContactSortBy
 from src.utils.command_decorators import handle_service_errors
+from rich.tree import Tree
 
 app = typer.Typer()
 console = Console()
 
+def show_address_book_tree(book: dict) -> Tree:
+    tree = Tree("[bold cyan]Address Book[/]")
+
+    # sort by name (key of the dictionary)
+    for name in sorted(book.keys(), key=lambda x: x.lower()):
+        record = book[name]
+        node = tree.add(f"[bold green]{record.name}[/]")
+
+        # phones
+        if record.phones:
+            phones_node = node.add(f"📞 [bold cyan]Phone:[/] ({len(record.phones)})")
+            for phone in record.phones:
+                phones_node.add(f"{phone}")
+        else:
+            node.add("📞 [bold cyan]Phone:[/] [dim]нет[/]")
+
+        # birthday
+        if getattr(record, "birthday", None):
+            node.add(f"🎂 [bold cyan]Birthday:[/] {record.birthday}")
+        else:
+            node.add("🎂 [bold cyan]Birthday:[/] [dim]not available[/]")
+
+        # address
+        if getattr(record, "address", None):
+            node.add(f"🏠 [bold cyan]Address:[/] {record.address}")
+        else:
+            node.add("🏠 [bold cyan]Address:[/] [dim]not available[/]")
+
+        # email
+        if getattr(record, "email", None):
+            node.add(f"✉️  [bold cyan]Email:[/] {record.email}")
+        else:
+            node.add("✉️  [bold cyan]Email:[/] [dim]not available[/]")
+
+    return tree
 
 @inject
 @handle_service_errors
@@ -26,17 +62,9 @@ def _all_impl(
     service: ContactService = Provide[Container.contact_service],
 ):
     if not service.has_contacts():
-        console.print("[yellow]Address book is empty.[/yellow]")
-        return
-
-    message = service.get_all_contacts(sort_by=sort_by)
-    console.print(
-        Panel(
-            message,
-            title="[bold]All Contacts[/bold]",
-            border_style="cyan",
-        )
-    )
+        console.print("[yellow]No contacts in the address book.[/yellow]")
+    else:
+        console.print(show_address_book_tree(service.address_book.data))
 
 
 @app.command(name="all")

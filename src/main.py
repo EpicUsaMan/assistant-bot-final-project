@@ -90,6 +90,29 @@ def auto_register_commands():
     
     _commands_registered = True
 
+from rich import print
+from rich.tree import Tree
+
+def show_menu() -> Tree:
+    
+    tree = Tree("[bold green]Welcome to the Assistant Bot![/bold green]\n\n[bold cyan]Available commands[/]")
+    general = tree.add("🤖 [yellow]General[/]")
+    contacts = tree.add("📇 [yellow]Contacts[/]")
+    birthdays = tree.add("🎂 [yellow]Birthdays[/]")
+
+    general.add("[bold cyan]hello[/] — Get a greeting")
+    general.add("[bold cyan]exit[/] or [bold cyan]quit[/] — Exit the program")
+
+    contacts.add("[bold cyan]add[/] — Add a contact")
+    contacts.add("[bold cyan]change[/] — Change phone number")
+    contacts.add("[bold cyan]phone[/] — Show phone numbers")
+    contacts.add("[bold cyan]all[/] — Show all contacts")
+
+    birthdays.add("[bold cyan]add-birthday [DD.MM.YYYY][/] — Add birthday")
+    birthdays.add("[bold cyan]show-birthday[/] — Show birthday")
+    birthdays.add("[bold cyan]birthdays[/] — Show upcoming birthdays")
+
+    return tree
 
 @app.command()
 def interactive():
@@ -99,37 +122,13 @@ def interactive():
     from click_repl import repl
     from click import Context
     
-    console.print(Panel(
-        "[bold green]Welcome to the Assistant Bot![/bold green]\n\n"
-        "Available commands:\n"
-        "  • [cyan]hello[/cyan] - Get a greeting\n"
-        "  • [cyan]add[/cyan] [name] [phone] - Add a contact\n"
-        "  • [cyan]change[/cyan] [name] [old_phone] [new_phone] - Change phone number\n"
-        "  • [cyan]phone[/cyan] [name] - Show phone numbers\n"
-        "  • [cyan]all[/cyan] [---sort-by tag_count|tag_name] - Show all contacts (optional sorting)\n"
-        "  • [cyan]add-birthday[/cyan] [name] [DD.MM.YYYY] - Add birthday\n"
-        "  • [cyan]show-birthday[/cyan] [name] - Show birthday\n"
-        "  • [cyan]birthdays[/cyan] - Show upcoming birthdays\n"
-        "  • [cyan]tag-add[/cyan] [name] [TAGS...] - Add one or many tags; CSV/quotes supported\n"
-        "      e.g. tag-add John ml \"data,science\",ai\n"
-        "  • [cyan]tag-remove[/cyan] [name] [tag] - Remove a tag\n"
-        "  • [cyan]tag-clear[/cyan] [name] - Clear all tags\n"
-        "  • [cyan]tag-list[/cyan] [name] - List tags of a contact\n"
-        "  • [cyan]find-by-tags[/cyan] [TAGS...] - Find contacts with ALL tags (AND)\n"
-        "      e.g. find-by-tags ml \"data,science\"\n"
-        "  • [cyan]find-by-tags-any[/cyan] [TAGS...] - Find contacts with ANY tag (OR)\n"
-        "  • [cyan]exit[/cyan] or [cyan]quit[/cyan] - Exit the program\n",
-        title="[bold]Assistant Bot[/bold]",
-        border_style="green"
-    ))
-    
+    console.print(show_menu())
     ctx = Context(typer.main.get_command(app))
     
     try:
         repl(ctx)
     except (EOFError, KeyboardInterrupt):
         console.print("\n[bold green]Good bye![/bold green]")
-
 
 def run_interactive():
     """
@@ -138,31 +137,9 @@ def run_interactive():
     This function can be called programmatically to start interactive mode.
     Commands are registered and wired by auto_register_commands().
     """
-    auto_register_commands()
     
-    console.print(Panel(
-        "[bold green]Welcome to the Assistant Bot![/bold green]\n\n"
-        "Available commands:\n"
-        "  • [cyan]hello[/cyan] - Get a greeting\n"
-        "  • [cyan]add[/cyan] [name] [phone] - Add a contact\n"
-        "  • [cyan]change[/cyan] [name] [old_phone] [new_phone] - Change phone number\n"
-        "  • [cyan]phone[/cyan] [name] - Show phone numbers\n"
-        "  • [cyan]all[/cyan] [---sort-by tag_count|tag_name] - Show all contacts (optional sorting)\n"
-        "  • [cyan]add-birthday[/cyan] [name] [DD.MM.YYYY] - Add birthday\n"
-        "  • [cyan]show-birthday[/cyan] [name] - Show birthday\n"
-        "  • [cyan]birthdays[/cyan] - Show upcoming birthdays\n"
-        "  • [cyan]tag-add[/cyan] [name] [TAGS...] - Add one or many tags; CSV/quotes supported\n"
-        "      e.g. tag-add John ml \"data,science\",ai\n"
-        "  • [cyan]tag-remove[/cyan] [name] [tag] - Remove a tag\n"
-        "  • [cyan]tag-clear[/cyan] [name] - Clear all tags\n"
-        "  • [cyan]tag-list[/cyan] [name] - List tags of a contact\n"
-        "  • [cyan]find-by-tags[/cyan] [TAGS...] - Find contacts with ALL tags (AND)\n"
-        "      e.g. find-by-tags ml \"data,science\"\n"
-        "  • [cyan]find-by-tags-any[/cyan] [TAGS...] - Find contacts with ANY tag (OR)\n"
-        "  • [cyan]exit[/cyan] or [cyan]quit[/cyan] - Exit the program\n",
-        title="[bold]Assistant Bot[/bold]",
-        border_style="green"
-    ))
+    auto_register_commands()
+    console.print(show_menu())
     
     try:
         from click_repl import repl

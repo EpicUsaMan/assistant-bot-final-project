@@ -6,7 +6,7 @@ separation of concerns and dependency injection support.
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, Iterable, List, Optional, Tuple, Any
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Any
 
 from src.models.address_book import AddressBook
 from src.models.record import Record

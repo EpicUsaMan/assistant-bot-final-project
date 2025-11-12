@@ -77,7 +77,7 @@ def validate_phone(value: str) -> str:
     if len(digits) > _ACEPTED_PHONE_LEN:
         try:
             num = phonenumbers.parse("+" + digits, None)
-        except NumberParseException:
+        except phonenumbers.NumberParseException:
             raise typer.BadParameter(
                 "Unsupported phone format. We store exactly 10 digits."
             )
@@ -85,15 +85,14 @@ def validate_phone(value: str) -> str:
         # Allow only person-reachable types
         typ = phonenumbers.number_type(num)
         if typ not in (
-            PhoneNumberType.MOBILE,
-            PhoneNumberType.FIXED_LINE,
-            PhoneNumberType.FIXED_LINE_OR_MOBILE,
+            phonenumbers.PhoneNumberType.MOBILE,
+            phonenumbers.PhoneNumberType.FIXED_LINE,
+            phonenumbers.PhoneNumberType.FIXED_LINE_OR_MOBILE,
         ):
             raise typer.BadParameter("Unsupported phone type")
 
         nsn = phonenumbers.national_significant_number(num)
         region = phonenumbers.region_code_for_number(num)
-
         if len(nsn) == _ACEPTED_PHONE_LEN:
             normalized = nsn
         elif region == "UA" and len(nsn) == 9:
