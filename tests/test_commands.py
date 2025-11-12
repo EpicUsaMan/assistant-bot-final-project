@@ -77,11 +77,11 @@ class TestAddCommand:
         mock_service.add_contact.return_value = "Contact added."
         
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["add", "John", "1234567890"])
+            result = runner.invoke(app, ["add", "John", "0123456789"])
             
         assert result.exit_code == 0
         assert "Contact added" in result.stdout
-        mock_service.add_contact.assert_called_once_with("John", "1234567890")
+        mock_service.add_contact.assert_called_once_with("John", "+380123456789")
         mock_service.address_book.save_to_file.assert_called_once()
     
     def test_add_contact_invalid_phone_format_not_digits(self, mock_service):
@@ -91,7 +91,7 @@ class TestAddCommand:
             
         assert result.exit_code == 2
         output = result.output
-        assert "Invalid value" in output or "must contain only digits" in output
+        assert "Invalid value for 'PHONE'" in result.output
         mock_service.add_contact.assert_not_called()
     
     def test_add_contact_invalid_phone_format_wrong_length(self, mock_service):
@@ -101,7 +101,7 @@ class TestAddCommand:
             
         assert result.exit_code == 2
         output = result.output
-        assert "Invalid value" in output or "must be exactly 10 digits" in output
+        assert "Invalid value for 'PHONE'" in result.output
         mock_service.add_contact.assert_not_called()
     
     def test_add_contact_business_logic_error(self, mock_service):
@@ -124,11 +124,11 @@ class TestChangeCommand:
         mock_service.change_contact.return_value = "Contact updated."
         
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["change", "John", "1234567890", "0987654321"])
+            result = runner.invoke(app, ["change", "John", "0123456789", "0987654321"])
             
         assert result.exit_code == 0
         assert "Contact updated" in result.stdout
-        mock_service.change_contact.assert_called_once_with("John", "1234567890", "0987654321")
+        mock_service.change_contact.assert_called_once_with("John", "+380123456789", "+380987654321")
         mock_service.address_book.save_to_file.assert_called_once()
     
     def test_change_phone_invalid_old_phone_format(self, mock_service):
@@ -137,8 +137,7 @@ class TestChangeCommand:
             result = runner.invoke(app, ["change", "John", "invalid", "0987654321"])
             
         assert result.exit_code == 2
-        output = result.output
-        assert "Invalid value" in output or "must contain only digits" in output
+        assert "Invalid phone number" in result.output
         mock_service.change_contact.assert_not_called()
     
     def test_change_phone_invalid_new_phone_format(self, mock_service):
@@ -147,8 +146,7 @@ class TestChangeCommand:
             result = runner.invoke(app, ["change", "John", "1234567890", "123"])
             
         assert result.exit_code == 2
-        output = result.output
-        assert "Invalid value" in output or "must be exactly 10 digits" in output
+        assert "Phone number is not possible: 123" in result.output
         mock_service.change_contact.assert_not_called()
     
     def test_change_phone_contact_not_found(self, mock_service):
@@ -324,8 +322,3 @@ class TestBirthdaysCommand:
             
         assert result.exit_code == 0
         assert "No upcoming birthdays" in result.stdout
-
-
-
-
-

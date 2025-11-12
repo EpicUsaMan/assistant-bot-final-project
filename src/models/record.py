@@ -91,8 +91,9 @@ class Record:
         Returns:
             Phone object if found, None otherwise
         """
+        canonical = Phone(phone).value
         for phone_obj in self.phones:
-            if phone_obj.value == phone:
+            if phone_obj.value == canonical:
                 return phone_obj
         return None
     
@@ -109,7 +110,7 @@ class Record:
         self.birthday = Birthday(birthday)
     
     def __str__(self) -> str:
-        phones_str = '; '.join(p.value for p in self.phones)
+        phones_str = '; '.join(p.display_value for p in self.phones)
         birthday_str = f", birthday: {self.birthday}" if self.birthday else ""
         return f"Contact name: {self.name.value}, phones: {phones_str}{birthday_str}"
     
@@ -121,6 +122,17 @@ class Record:
         self.__dict__.update(state)
         if "tags" not in self.__dict__:
             self.tags = Tags()
+        
+        # migrate phone instances / raw strings
+        migrated: list[Phone] = []
+        for item in getattr(self, "phones", []):
+            if isinstance(item, Phone):
+                # recreate phone object from canonical string
+                migrated.append(Phone(item.value))
+            else:
+                # in case a string was saved in the pickle
+                migrated.append(Phone(str(item)))
+        self.phones = migrated
 
     # --- Tags API ---
     def set_tags(self, tags: list[str] | str):
