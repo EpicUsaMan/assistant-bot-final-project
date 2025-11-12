@@ -124,7 +124,6 @@ class TestGetPhone:
         result = service.get_phone("NoPhone")
         assert "No phones" in result
 
-
 class TestGetAllContacts:
     """Tests for get_all_contacts method."""
     

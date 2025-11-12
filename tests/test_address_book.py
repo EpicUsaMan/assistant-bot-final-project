@@ -83,15 +83,15 @@ def test_address_book_str_representation_with_records():
     """Test that AddressBook with records returns correct string representation."""
     book = AddressBook()
     john_record = Record("John")
-    john_record.add_phone("1234567890")
+    john_record.add_phone("0123456789")
     book.add_record(john_record)
     jane_record = Record("Jane")
     jane_record.add_phone("0987654321")
     book.add_record(jane_record)
     
     result = str(book)
-    assert "Contact name: John, phones: 1234567890" in result
-    assert "Contact name: Jane, phones: 0987654321" in result
+    assert "Contact name: John, phones: +380 123456789" in result
+    assert "Contact name: Jane, phones: +380 98 765 4321" in result
 
 
 def test_address_book_repr_representation():

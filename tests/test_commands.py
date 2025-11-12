@@ -184,6 +184,12 @@ class TestPhoneCommand:
         assert result.exit_code == 1
         assert "Error" in result.stdout
 
+    def test_phone_formats_number(self, mock_service):
+        mock_service.get_phone.return_value = "+380 67 235 5960"
+        with container.contact_service.override(mock_service):
+            result = runner.invoke(app, ["phone", "John"])
+        assert result.exit_code == 0
+        assert "+380 67 235 5960" in result.stdout
 
 class TestAllCommand:
     """Tests for all command."""
@@ -227,6 +233,15 @@ class TestAllCommand:
         assert "Address book is empty." in result.stdout
         mock_service.get_all_contacts.assert_not_called()
 
+    def test_all_outputs_formatted_numbers(self, mock_service):
+        mock_service.has_contacts.return_value = True
+        mock_service.get_all_contacts.return_value = (
+            "Contact name: John, phones: +380 67 235 5960"
+        )
+        with container.contact_service.override(mock_service):
+            result = runner.invoke(app, ["all"])
+        assert result.exit_code == 0
+        assert "+380 67 235 5960" in result.stdout
 
 class TestAddBirthdayCommand:
     """Tests for add-birthday command."""
