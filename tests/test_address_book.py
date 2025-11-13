@@ -17,7 +17,10 @@ def test_address_book_add_record():
     record = Record("John")
     book.add_record(record)
     assert len(book.data) == 1
-    assert "John" in book.data
+    key = f"{book.current_group_id}:John"
+    assert key in book.data
+    rec = book.data[key]
+    assert rec.name.value == "John"
 
 
 def test_address_book_add_multiple_records():
@@ -27,7 +30,11 @@ def test_address_book_add_multiple_records():
     jane_record = Record("Jane")
     book.add_record(john_record)
     book.add_record(jane_record)
-    assert len(book.data) == 2
+    # keys now have group prefix
+    keys = list(book.data.keys())  # UPDATED
+    assert len(keys) == 2
+    assert f"{book.current_group_id}:John" in keys  # UPDATED
+    assert f"{book.current_group_id}:Jane" in keys  # UPDATED
 
 
 def test_address_book_add_duplicate_record_raises_error():
@@ -63,7 +70,9 @@ def test_address_book_delete_record():
     record = Record("John")
     book.add_record(record)
     book.delete("John")
-    assert len(book.data) == 0
+    # verify by prefixed key
+    key = f"{book.current_group_id}:John"
+    assert key not in book.data
 
 
 def test_address_book_delete_non_existent_record_raises_error():
@@ -111,9 +120,8 @@ def test_address_book_iteration():
     book.add_record(jane_record)
     
     names = [name for name in book.data.keys()]
-    assert "John" in names
-    assert "Jane" in names
-
+    assert f"{book.current_group_id}:John" in names  # UPDATED
+    assert f"{book.current_group_id}:Jane" in names  # UPDATED
 
 def test_address_book_userdict_functionality():
     """Test that AddressBook inherits UserDict functionality."""
@@ -121,6 +129,91 @@ def test_address_book_userdict_functionality():
     record = Record("John")
     book.add_record(record)
     
-    assert book["John"] == record
+    key = f"{book.current_group_id}:John"  # UPDATED
+    assert book[key] == record  # UPDATED
     assert len(book) == 1
 
+# --- Groups: rename & remove -----------------------------------------
+
+def test_rename_group_updates_keys_and_group_id():
+    book = AddressBook()
+    rec = Record("John")
+    book.add_record(rec)  # default group
+
+    # sanity check
+    key_old = f"{book.current_group_id}:John"
+    assert key_old in book.data
+    assert rec.group_id == "personal"
+
+    # act
+    book.rename_group("personal", "friends")
+
+    # all keys renew check
+    key_new = "friends:John"
+    assert key_new in book.data
+    assert key_old not in book.data
+
+    # group renaming
+    assert "personal" not in book.groups
+    assert "friends" in book.groups
+    assert book.groups["friends"].id == "friends"
+
+    # group_id record must be renewed
+    rec2 = book.data[key_new]
+    assert rec2.group_id == "friends"
+
+    # current_group_id also must be renewed
+    assert book.current_group_id == "friends"
+
+
+def test_rename_group_to_existing_raises():
+    book = AddressBook()
+    book.add_group("work")
+    # try to rename to existing group
+    with pytest.raises(ValueError, match="already exists"):
+        book.rename_group("personal", "work")
+
+
+def test_remove_group_not_empty_without_force_raises():
+    book = AddressBook()
+    book.add_group("work")
+    book.current_group_id = "work"
+    
+    rec = Record("John")
+    book.add_record(rec)
+
+    with pytest.raises(ValueError, match="not empty"):
+        book.remove_group("work")
+
+
+def test_remove_group_not_empty_with_force_deletes_records():
+    book = AddressBook()
+    book.add_group("work")
+    book.current_group_id = "work"    
+    rec = Record("John")
+    
+    book.remove_group("work", force=True)
+
+    # no such group
+    assert not book.has_group("work")
+
+    # no contacts in group
+    for key in book.data.keys():
+        assert not key.startswith("work:")
+
+
+def test_remove_default_group_raises():
+    book = AddressBook()
+    with pytest.raises(ValueError, match="Default group cannot be removed"):
+        book.remove_group("personal", force=True)
+
+
+def test_remove_current_group_switches_to_personal():
+    book = AddressBook()
+    book.add_group("work")
+    book.current_group_id = "work"
+
+    book.remove_group("work")
+
+    assert book.current_group_id == "personal"
+    assert "work" not in book.groups

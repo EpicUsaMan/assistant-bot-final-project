@@ -1,22 +1,30 @@
 """Contact record class for storing contact information."""
 
 from typing import Optional
-from src.models.name import Name
-from src.models.phone import Phone
+
 from src.models.birthday import Birthday
+from src.models.name import Name
+from src.models.note import Note
+from src.models.phone import Phone
+from src.models.tags import Tags
+from src.utils.validators import is_valid_tag, normalize_tag
+
+from src.models.group import DEFAULT_GROUP_ID
 
 
 class Record:
     """
-    Class for storing contact information including name, phones, and birthday.
+    Class for storing contact information including name, phones, birthday, and notes.
     
     Attributes:
         name: Contact's name (Name object)
         phones: List of phone numbers (Phone objects)
         birthday: Contact's birthday (Birthday object, optional)
+        tags: Contact's tags (Tags object)
+        notes: Dictionary of notes (Note objects, keyed by note name)
     """
     
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, group_id: str | None = None) -> None:
         """
         Initialize a contact record with a name.
         
@@ -26,7 +34,10 @@ class Record:
         self.name = Name(name)
         self.phones: list[Phone] = []
         self.birthday: Optional[Birthday] = None
-    
+        self.tags = Tags()
+        self.notes: dict[str, Note] = {}
+        self.group_id: str | None = group_id
+
     def add_phone(self, phone: str) -> None:
         """
         Add a phone number to the contact.
@@ -111,3 +122,207 @@ class Record:
     def __repr__(self) -> str:
         return f"Record(name={self.name.value!r}, phones={[p.value for p in self.phones]})"
 
+    def __getstate__(self) -> dict:
+        return self.__dict__
+
+    def __setstate__(self, state: dict) -> None:
+        """Backward compatibility for old pickles (no tags / no group_id)."""
+        self.__dict__.update(state)
+
+        if "tags" not in self.__dict__:
+            self.tags = Tags()
+        if "notes" not in self.__dict__:
+            self.notes = {}
+
+        if not hasattr(self, "group_id") or not self.group_id:
+            self.group_id = DEFAULT_GROUP_ID
+
+    # --- Tags API ---
+    def set_tags(self, tags: list[str] | str):
+        """
+        Replace all tags at once. Accepts list or comma-separated string.
+        Args:
+            tags: List of tags or comma-separated string of tags
+        """
+        if isinstance(tags, str):
+            from src.utils.validators import split_tags_string
+
+            tags = split_tags_string(tags)
+        self.tags.replace(tags)
+
+    def add_tag(self, tag: str) -> None:
+        """
+        Add a single tag.
+        Args:
+            tag: Tag to add
+        Raises:
+            ValueError: If tag format is invalid
+        """
+        n = normalize_tag(tag)
+        if not is_valid_tag(n):
+            raise ValueError(f"Invalid tag: '{tag}'")
+        self.tags.add(n)
+
+    def remove_tag(self, tag: str) -> None:
+        """
+        Remove a single tag.
+        Args:
+            tag: Tag to remove
+        """
+        n = normalize_tag(tag)
+        self.tags.remove(n)
+
+    def clear_tags(self) -> None:
+        """
+        Clear all tags.
+        """
+        self.tags.clear()
+
+    def tags_list(self) -> list[str]:
+        return self.tags.as_list()
+
+    def has_tags_all(self, tags: list[str]) -> bool:
+        """
+        Return True if note has *all* of tags (AND).
+        """
+        return all(t in self.tags.as_list() for t in tags)
+
+    def has_tags_any(self, tags: list[str]) -> bool:
+        """
+        Return True if note has *any* of tags (OR).
+        """
+        return any(t in self.tags.as_list() for t in tags)
+
+    # --- Notes API ---
+    def add_note(self, name: str, content: str = "") -> None:
+        """
+        Add a note to the contact.
+        
+        Args:
+            name: Note name/title (acts as unique identifier)
+            content: Note text content (default: empty string)
+            
+        Raises:
+            ValueError: If note with this name already exists or name is empty
+        """
+        if name in self.notes:
+            raise ValueError(f"Note '{name}' already exists for this contact")
+        
+        note = Note(name, content)
+        self.notes[name] = note
+    
+    def find_note(self, name: str) -> Optional[Note]:
+        """
+        Find a note by name.
+        
+        Args:
+            name: Note name to find
+            
+        Returns:
+            Note object if found, None otherwise
+        """
+        return self.notes.get(name)
+    
+    def edit_note(self, name: str, content: str) -> None:
+        """
+        Edit an existing note's content.
+        
+        Args:
+            name: Note name
+            content: New text content
+            
+        Raises:
+            ValueError: If note is not found
+        """
+        note = self.find_note(name)
+        if note is None:
+            raise ValueError(f"Note '{name}' not found")
+        note.update_content(content)
+    
+    def delete_note(self, name: str) -> None:
+        """
+        Delete a note from the contact.
+        
+        Args:
+            name: Note name to delete
+            
+        Raises:
+            ValueError: If note is not found
+        """
+        if name not in self.notes:
+            raise ValueError(f"Note '{name}' not found")
+        del self.notes[name]
+    
+    def list_notes(self) -> list[Note]:
+        """
+        Get list of all notes.
+        
+        Returns:
+            List of Note objects
+        """
+        return list(self.notes.values())
+    
+    def note_add_tag(self, note_name: str, tag: str) -> None:
+        """
+        Add a tag to a specific note.
+        
+        Args:
+            note_name: Name of the note
+            tag: Tag to add
+            
+        Raises:
+            ValueError: If note not found or tag format is invalid
+        """
+        note = self.find_note(note_name)
+        if note is None:
+            raise ValueError(f"Note '{note_name}' not found")
+        note.add_tag(tag)
+    
+    def note_remove_tag(self, note_name: str, tag: str) -> None:
+        """
+        Remove a tag from a specific note.
+        
+        Args:
+            note_name: Name of the note
+            tag: Tag to remove
+            
+        Raises:
+            ValueError: If note not found
+        """
+        note = self.find_note(note_name)
+        if note is None:
+            raise ValueError(f"Note '{note_name}' not found")
+        note.remove_tag(tag)
+    
+    def note_clear_tags(self, note_name: str) -> None:
+        """
+        Clear all tags from a specific note.
+        
+        Args:
+            note_name: Name of the note
+            
+        Raises:
+            ValueError: If note not found
+        """
+        note = self.find_note(note_name)
+        if note is None:
+            raise ValueError(f"Note '{note_name}' not found")
+        note.clear_tags()
+    
+    def note_list_tags(self, note_name: str) -> list[str]:
+        """
+        Get list of all tags for a specific note.
+        
+        Args:
+            note_name: Name of the note
+            
+        Returns:
+            List of tag strings
+            
+        Raises:
+            ValueError: If note not found
+        """
+        note = self.find_note(note_name)
+        if note is None:
+            raise ValueError(f"Note '{note_name}' not found")
+        return note.tags_list()
