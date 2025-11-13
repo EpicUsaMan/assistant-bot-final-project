@@ -167,7 +167,6 @@ def main():
     """
     auto_register_commands()
     
-    # If no arguments provided, launch interactive mode by default
     if len(sys.argv) == 1:
         run_interactive()
     else:
