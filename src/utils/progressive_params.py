@@ -77,6 +77,13 @@ class ContactSelector(ParameterProvider):
         message: str = "Select contact:",
         service: "NoteService" = Provide["Container.note_service"]
     ):
+        """
+        Initialize ContactSelector.
+        
+        Args:
+            message: Prompt message for selection
+            service: NoteService instance (injected by container as singleton)
+        """
         self.message = message
         self.service = service
     
@@ -125,6 +132,13 @@ class NoteSelector(ParameterProvider):
         message: str = "Select note:",
         service: "NoteService" = Provide["Container.note_service"]
     ):
+        """
+        Initialize NoteSelector.
+        
+        Args:
+            message: Prompt message for selection
+            service: NoteService instance (injected by container as singleton)
+        """
         self.message = message
         self.service = service
     
@@ -356,8 +370,55 @@ class _ProgressiveParamsWrapper:
             # Get provider - call it if it's a factory callable
             provider_or_factory = self._providers[param_name]
             if callable(provider_or_factory) and not isinstance(provider_or_factory, ParameterProvider):
-                # It's a factory callable, call it to get the provider instance
-                provider = provider_or_factory()
+                # Check if it's a functools.partial wrapping a DI provider
+                from functools import partial as functools_partial
+                from dependency_injector import providers as di_providers
+                
+                underlying_factory = None
+                partial_args = ()
+                partial_kwargs = {}
+                
+                if isinstance(provider_or_factory, functools_partial):
+                    # Unwrap the partial to get the underlying factory
+                    underlying_factory = provider_or_factory.func
+                    partial_args = provider_or_factory.args
+                    partial_kwargs = provider_or_factory.keywords
+                    provider_or_factory_to_check = underlying_factory
+                else:
+                    provider_or_factory_to_check = provider_or_factory
+                
+                # Check if it's a dependency-injector Provider
+                # These need to be called on the container instance, not the class
+                if isinstance(provider_or_factory_to_check, di_providers.Provider):
+                    # It's a DI provider - need to resolve it through the container instance
+                    # Find which attribute of Container this provider is
+                    from src.main import container
+                    from src.container import Container as ContainerClass
+                    
+                    provider_name = None
+                    for attr_name in dir(ContainerClass):
+                        if not attr_name.startswith('_'):
+                            try:
+                                attr_value = getattr(ContainerClass, attr_name)
+                                if attr_value is provider_or_factory_to_check:
+                                    provider_name = attr_name
+                                    break
+                            except Exception as e:
+                                continue
+                    
+                    if provider_name:
+                        # Call through container instance to use correct DI context
+                        # Apply partial args/kwargs if present
+                        if underlying_factory:
+                            provider = getattr(container, provider_name)(*partial_args, **partial_kwargs)
+                        else:
+                            provider = getattr(container, provider_name)()
+                    else:
+                        # Fallback: call directly (might not have correct context)
+                        provider = provider_or_factory()
+                else:
+                    # It's a regular factory callable, call it to get the provider instance
+                    provider = provider_or_factory()
             else:
                 # It's already a provider instance
                 provider = provider_or_factory
@@ -441,6 +502,13 @@ class TagSelector(ParameterProvider):
         message: str = "Select tag:",
         service: "NoteService" = Provide["Container.note_service"]
     ):
+        """
+        Initialize TagSelector.
+        
+        Args:
+            message: Prompt message for selection
+            service: NoteService instance (injected by container as singleton)
+        """
         self.message = message
         self.service = service
     

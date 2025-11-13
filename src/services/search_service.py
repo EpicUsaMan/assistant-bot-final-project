@@ -11,6 +11,7 @@ from typing import List, Tuple
 from src.models.address_book import AddressBook
 from src.models.note import Note
 from src.models.record import Record
+from src.models.group import DEFAULT_GROUP_ID
 
 
 class ContactSearchType(str, Enum):
@@ -78,6 +79,11 @@ class SearchService:
         """
         self.address_book = address_book
     
+    @property
+    def current_group_id(self) -> str:
+        """Get the current active group id from AddressBook."""
+        return getattr(self.address_book, "current_group_id", DEFAULT_GROUP_ID)
+    
     def has_contacts(self) -> bool:
         """
         Check if there are any contacts in the address book.
@@ -89,13 +95,23 @@ class SearchService:
     
     def list_contacts(self) -> list[tuple[str, str]]:
         """
-        List all contacts with their phone numbers.
+        List contacts in current group with their phone numbers.
         
         Returns:
-            List of tuples (contact_name, phones_str)
+            List of tuples (contact_name, phones_str) from current group
         """
         result = []
-        for name, record in self.address_book.data.items():
+        current_group = self.current_group_id
+        
+        for key, record in self.address_book.data.items():
+            # Filter by current group
+            if ":" in key:
+                group_id, name = key.split(":", 1)
+                if group_id != current_group:
+                    continue
+            else:
+                name = key
+            
             phones_str = ", ".join(p.value for p in record.phones) if record.phones else "No phone"
             result.append((name, phones_str))
         return sorted(result, key=lambda x: x[0])
@@ -104,14 +120,14 @@ class SearchService:
         self, query: str, search_type: ContactSearchType = ContactSearchType.ALL
     ) -> List[Tuple[str, Record]]:
         """
-        Search contacts by various criteria.
+        Search contacts in current group by various criteria.
         
         Args:
             query: Search query string (for tags-all and tags-any, use comma-separated tags)
             search_type: Type of search to perform (default: ALL)
             
         Returns:
-            List of (contact_name, Record) tuples matching the search
+            List of (contact_name, Record) tuples matching the search in current group
             
         Examples:
             search_contacts("john", ContactSearchType.NAME)
@@ -120,13 +136,22 @@ class SearchService:
         """
         results: List[Tuple[str, Record]] = []
         query_lower = query.lower()
+        current_group = self.current_group_id
         
         # Handle multi-tag searches
         if search_type in (ContactSearchType.TAGS_ALL, ContactSearchType.TAGS_ANY):
             # Split by comma and normalize
             search_tags = [tag.strip().lower() for tag in query.split(',') if tag.strip()]
             
-            for name, record in self.address_book.data.items():
+            for key, record in self.address_book.data.items():
+                # Filter by current group
+                if ":" in key:
+                    group_id, name = key.split(":", 1)
+                    if group_id != current_group:
+                        continue
+                else:
+                    name = key
+                    
                 contact_tags = [tag.lower() for tag in record.tags_list()]
                 
                 if search_type == ContactSearchType.TAGS_ALL:
@@ -141,7 +166,15 @@ class SearchService:
             return results
         
         # Regular searches
-        for name, record in self.address_book.data.items():
+        for key, record in self.address_book.data.items():
+            # Filter by current group
+            if ":" in key:
+                group_id, name = key.split(":", 1)
+                if group_id != current_group:
+                    continue
+            else:
+                name = key
+            
             match = False
             
             if search_type == ContactSearchType.ALL:
@@ -187,19 +220,28 @@ class SearchService:
         self, query: str, search_type: NoteSearchType = NoteSearchType.ALL
     ) -> List[Tuple[str, str, Note]]:
         """
-        Search notes by various criteria.
+        Search notes in current group by various criteria.
         
         Args:
             query: Search query string
             search_type: Type of search to perform (default: ALL)
             
         Returns:
-            List of (contact_name, note_name, Note) tuples matching the search
+            List of (contact_name, note_name, Note) tuples matching the search in current group
         """
         results: List[Tuple[str, str, Note]] = []
         query_lower = query.lower()
+        current_group = self.current_group_id
         
-        for contact_name, record in self.address_book.data.items():
+        for key, record in self.address_book.data.items():
+            # Filter by current group
+            if ":" in key:
+                group_id, contact_name = key.split(":", 1)
+                if group_id != current_group:
+                    continue
+            else:
+                contact_name = key
+            
             for note in record.list_notes():
                 match = False
                 

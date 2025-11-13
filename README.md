@@ -129,6 +129,55 @@ python src/main.py search notes "meeting" --by=text
 | `add-birthday` | name, birthday (DD.MM.YYYY) | Add a birthday date to a contact |
 | `show-birthday` | name | Show the birthday date for a contact |
 | `birthdays` | None | Show all upcoming birthdays for the next week |
+| `tag-add`            | name, tag                             | Add a tag to a contact                                   |
+| `tag-remove`         | name, tag                             | Remove a tag from a contact                              |
+| `tag-list`           | name                                  | List tags of a contact                                   |
+| `tag-clear`          | name                                  | Clear all tags for a contact                             |
+| `find-by-tags`       | "t1,t2"                               | Find contacts that have **ALL** tags (AND)               |
+| `find-by-tags-any`   | "t1,t2"                               | Find contacts that have **ANY** tag (OR)                 |
+| `interactive` | None | Start interactive REPL mode |
+| `group-list`    | None                          | Show all groups with contact counts and current mark |
+| `group-add`     | `<group_id>`                  | Create a new group                                   |
+| `group-use`     | `<group_id>`                  | Switch active group                                  |
+
+### Groups: CLI usage
+
+Basic workflow for managing groups and grouped contacts:
+
+```bash
+# List all groups with contact counts, current group is marked
+python src/main.py group-list
+
+# Create a new group
+python src/main.py group-add work
+
+# Switch active group
+python src/main.py group-use work
+
+# Add contacts into the current group (here: work)
+python src/main.py add "John Doe" 1234567890
+
+# Switch back to personal and add another contact
+python src/main.py group-use personal
+python src/main.py add "Alice" 1111111111
+
+# Show contacts only from the current group (default behaviour)
+python src/main.py all
+
+# Show contacts only from a specific group
+python src/main.py all --group work
+
+# Show contacts from all groups, grouped in output
+python src/main.py all --group all
+```
+
+In interactive mode the prompt shows the current group, for example:
+
+```text
+[personal] >
+[work] >
+```
+
 
 ### Tags
 | Command | Arguments | Description |

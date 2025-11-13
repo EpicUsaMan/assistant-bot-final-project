@@ -9,6 +9,7 @@ from typing import List
 
 from src.models.address_book import AddressBook
 from src.models.note import Note
+from src.models.group import DEFAULT_GROUP_ID
 from src.utils.validators import is_valid_tag, normalize_tag
 
 
@@ -29,24 +30,40 @@ class NoteService:
         """
         self.address_book = address_book
     
+    @property
+    def current_group_id(self) -> str:
+        """Get the current active group id from AddressBook."""
+        return getattr(self.address_book, "current_group_id", DEFAULT_GROUP_ID)
+    
     def has_contacts(self) -> bool:
         """
-        Check if there are any contacts in the address book.
+        Check if there are any contacts in the current group.
         
         Returns:
-            True if there are contacts, False otherwise
+            True if there are contacts in the current group, False otherwise
         """
-        return len(self.address_book.data) > 0
+        # Use the same logic as list_contacts to ensure consistency
+        return len(self.list_contacts()) > 0
     
     def list_contacts(self) -> list[tuple[str, str]]:
         """
-        List all contacts with their phone numbers.
+        List contacts in current group with their phone numbers.
         
         Returns:
-            List of tuples (contact_name, phones_str)
+            List of tuples (contact_name, phones_str) from current group
         """
         result = []
-        for name, record in self.address_book.data.items():
+        current_group = self.current_group_id
+        
+        for key, record in self.address_book.data.items():
+            # Filter by current group
+            if ":" in key:
+                group_id, name = key.split(":", 1)
+                if group_id != current_group:
+                    continue
+            else:
+                name = key
+                
             phones_str = ", ".join(p.value for p in record.phones) if record.phones else "No phone"
             result.append((name, phones_str))
         return sorted(result, key=lambda x: x[0])

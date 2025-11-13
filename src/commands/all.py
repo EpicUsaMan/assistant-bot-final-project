@@ -23,13 +23,14 @@ console = Console()
 @handle_service_errors
 def _all_impl(
     sort_by: Optional[ContactSortBy] = None,
+    group: Optional[str] = None,
     service: ContactService = Provide[Container.contact_service],
 ):
     if not service.has_contacts():
         console.print("[yellow]Address book is empty.[/yellow]")
         return
 
-    message = service.get_all_contacts(sort_by=sort_by)
+    message = service.get_all_contacts(sort_by=sort_by, group=group)
     console.print(
         Panel(
             message,
@@ -46,6 +47,11 @@ def all_command(
         "--sort-by",
         help="Sort by: name, phone, birthday, tag_count or tag_name",
     ),
+    group: Optional[str] = typer.Option(
+        None,
+        "--group",
+        help="Group filter: current (default), all or specific group id",
+    ),
 ):
     """
     Show all contacts in the address book.
@@ -54,4 +60,4 @@ def all_command(
     - Controller: Handles exceptions and coordinates service calls
     - View: Formats and displays results using Rich
     """
-    return _all_impl(sort_by=sort_by)
+    return _all_impl(sort_by=sort_by, group=group)

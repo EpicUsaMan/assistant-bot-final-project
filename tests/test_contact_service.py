@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from src.models.address_book import AddressBook
 from src.models.record import Record
 from src.services.contact_service import ContactService, ContactSortBy
+from src.models.group import DEFAULT_GROUP_ID
 
 
 @pytest.fixture
@@ -346,17 +347,328 @@ class TestSorting:
         """get_all_contacts should respect sort_by and use list_contacts under the hood."""
         calls = []
 
-        def fake_list_contacts(sort_by):
-            calls.append(sort_by)
-            # return in sorted order to verify output
+        def fake_list_contacts(sort_by, group=None):
+            calls.append((sort_by, group))
             return [("X", sorting_service.address_book.find("Pavlo"))]
 
         monkeypatch.setattr(sorting_service, "list_contacts", fake_list_contacts)
 
         result = sorting_service.get_all_contacts(sort_by=ContactSortBy.NAME)
         assert "Contact name: X" in result
-        # to be sure, that sort_by is passed to list_contacts
-        assert calls == [ContactSortBy.NAME]
+        # sort_by exist, group by default None
+        assert calls == [(ContactSortBy.NAME, None)]
+
+class TestGroupsService:
+    """Tests for groups support in ContactService."""
+
+    def test_list_groups_has_default_personal(self, contact_service):
+        """Empty address book has only default group with zero contacts."""
+        groups = contact_service.list_groups()
+        assert groups  # not empty
+        ids = [gid for gid, _ in groups]
+        assert DEFAULT_GROUP_ID in ids
+        # default has 0 contacts
+        default_entry = next((c for c in groups if c[0] == DEFAULT_GROUP_ID), None)
+        assert default_entry is not None
+        assert default_entry[1] == 0
+
+    def test_add_group_creates_new_group(self, contact_service):
+        """add_group registers new group in address book."""
+        contact_service.add_group("work")
+        groups = contact_service.list_groups()
+        ids = {gid for gid, _ in groups}
+        assert {DEFAULT_GROUP_ID, "work"} <= ids
+        assert contact_service.address_book.has_group("work")
+
+    def test_add_group_duplicate_raises(self, contact_service):
+        """add_group fails on duplicate group id."""
+        contact_service.add_group("work")
+        with pytest.raises(ValueError):
+            contact_service.add_group("work")
+
+    def test_set_current_group_success(self, contact_service):
+        """set_current_group switches active group."""
+        contact_service.add_group("work")
+        contact_service.set_current_group("work")
+        assert contact_service.get_current_group() == "work"
+
+    def test_set_current_group_not_found(self, contact_service):
+        """set_current_group fails for unknown group."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.set_current_group("unknown")
+
+    def test_add_contact_uses_current_group_by_default(self, contact_service):
+        """add_contact without explicit group uses current_group_id."""
+        contact_service.add_group("work")
+        contact_service.set_current_group("work")
+
+        contact_service.add_contact("Alice", "1234567890")
+
+        # find created record
+        records = list(contact_service.address_book.data.values())
+        rec = next(r for r in records if r.name.value == "Alice")
+        assert rec.group_id == "work"
+
+    def test_add_contact_explicit_group_overrides_current(self, contact_service):
+        """Explicit group_id in add_contact overrides current group."""
+        contact_service.add_group("work")
+        contact_service.set_current_group("work")
+
+        contact_service.add_contact("Bob", "1234567890", group_id="other")
+
+        records = list(contact_service.address_book.data.values())
+        rec = next(r for r in records if r.name.value == "Bob")
+        assert rec.group_id == "other"
+        # group 'other' should also be registered in address book
+        assert contact_service.address_book.has_group("other")
+
+
+class TestGroupsFiltering:
+    """Tests for group-based filtering in list_contacts/get_all_contacts."""
+
+    def test_list_contacts_filters_by_current_group(self, contact_service):
+        contact_service.add_group("work")
+        # current group = personal (DEFAULT)
+        contact_service.add_contact("Alice", "1111111111")  # personal
+        contact_service.set_current_group("work")
+        contact_service.add_contact("Bob", "2222222222")    # work
+
+        items = contact_service.list_contacts()  # default -> current (work)
+        names = [name for name, _ in items]
+        assert names == ["Bob"]
+
+    def test_list_contacts_filters_by_specific_group(self, contact_service):
+        contact_service.add_group("work")
+        contact_service.add_contact("Alice", "1111111111", group_id="personal")
+        contact_service.add_contact("Bob", "2222222222", group_id="work")
+
+        items_personal = contact_service.list_contacts(group="personal")
+        names_personal = [name for name, _ in items_personal]
+        assert names_personal == ["Alice"]
+
+        items_work = contact_service.list_contacts(group="work")
+        names_work = [name for name, _ in items_work]
+        assert names_work == ["Bob"]
+
+    def test_list_contacts_all_groups(self, contact_service):
+        contact_service.add_group("work")
+        contact_service.add_contact("Alice", "1111111111", group_id="personal")
+        contact_service.add_contact("Bob", "2222222222", group_id="work")
+
+        items_all = contact_service.list_contacts(group="all")
+        names_all = [name for name, _ in items_all]
+        assert set(names_all) == {"Alice", "Bob"}
+
+    def test_get_all_contacts_group_all_grouped_output(self, contact_service):
+        contact_service.add_group("work")
+        contact_service.add_contact("Alice", "1111111111", group_id="personal")
+        contact_service.add_contact("Bob", "2222222222", group_id="work")
+
+        out = contact_service.get_all_contacts(group="all")
+
+        # group header exists
+        assert "Group: personal" in out
+        assert "Group: work" in out
+        # names exists
+        assert "Alice" in out
+        assert "Bob" in out
+
+        # Alice has to be inside "personal" group
+        personal_block = out.split("Group: personal", 1)[1].split("Group:", 1)[0]
+        assert "Alice" in personal_block
+
+        # Bob has to be inside "work" group
+        work_block = out.split("Group: work", 1)[1]
+        assert "Bob" in work_block
+
+    def test_list_contacts_unknown_group_raises(self, contact_service):
+        with pytest.raises(ValueError, match="Group 'unknown' not found"):
+            contact_service.list_contacts(group="unknown")
+
+
+class TestGroupsIsolation:
+    """Tests that contacts with the same name are isolated per group."""
+
+    def _get_phones_by_group(self, service: ContactService, name: str) -> dict[str, list[str]]:
+        """Helper: {group_id: [phones]} for a given name."""
+        result: dict[str, list[str]] = {}
+        for rec in service.address_book.data.values():
+            if rec.name.value != name:
+                continue
+            gid = rec.group_id
+            result.setdefault(gid, []).extend(p.value for p in rec.phones)
+        return result
+
+    def test_get_phone_uses_current_group(self, contact_service):
+        """get_phone should read contact from current group only."""
+        svc = contact_service
+        svc.add_group("work")
+
+        # same name in two groups
+        svc.add_contact("John", "1111111111", group_id="personal")
+        svc.add_contact("John", "2222222222", group_id="work")
+
+        # personal
+        svc.set_current_group("personal")
+        out = svc.get_phone("John")
+        assert "1111111111" in out
+        assert "2222222222" not in out
+
+        # work
+        svc.set_current_group("work")
+        out = svc.get_phone("John")
+        assert "2222222222" in out
+        assert "1111111111" not in out
+
+    def test_change_contact_affects_only_current_group(self, contact_service):
+        """change_contact must update record only in current group."""
+        svc = contact_service
+        svc.add_group("work")
+
+        svc.add_contact("John", "1111111111", group_id="personal")
+        svc.add_contact("John", "2222222222", group_id="work")
+
+        # change in personal
+        svc.set_current_group("personal")
+        svc.change_contact("John", "1111111111", "3333333333")
+
+        phones = self._get_phones_by_group(svc, "John")
+        assert sorted(phones["personal"]) == ["3333333333"]
+        assert sorted(phones["work"]) == ["2222222222"]
+
+    def test_tags_are_isolated_per_group(self, contact_service):
+        """Tag operations for the same name are scoped to current group."""
+        svc = contact_service
+        svc.add_group("work")
+
+        svc.add_contact("John", "1111111111", group_id="personal")
+        svc.add_contact("John", "2222222222", group_id="work")
+
+        # personal: add and verify
+        svc.set_current_group("personal")
+        svc.add_tag("John", "friends")
+        assert svc.list_tags("John") == ["friends"]
+
+        # work: separate tags
+        svc.set_current_group("work")
+        svc.add_tag("John", "colleague")
+        assert svc.list_tags("John") == ["colleague"]
+
+        # back to personal: tags must remain isolated
+        svc.set_current_group("personal")
+        assert svc.list_tags("John") == ["friends"]
+
+    def test_clear_tags_only_in_current_group(self, contact_service):
+        """clear_tags should clear tags only for record in current group."""
+        svc = contact_service
+        svc.add_group("work")
+
+        svc.add_contact("John", "1111111111", group_id="personal")
+        svc.add_contact("John", "2222222222", group_id="work")
+
+        svc.set_current_group("personal")
+        svc.add_tag("John", "friends")
+
+        svc.set_current_group("work")
+        svc.add_tag("John", "colleague")
+
+        # clear only in work
+        svc.clear_tags("John")
+
+        svc.set_current_group("personal")
+        assert svc.list_tags("John") == ["friends"]
+
+        svc.set_current_group("work")
+        assert svc.list_tags("John") == []
+
+
+class TestGroupsServiceAPI:
+    """Tests for ContactService group management wrappers."""
+
+    def test_rename_group_message_and_delegation(self, contact_service):
+        """Test renaming a group updates all references."""
+        # setup: add group and records
+        contact_service.add_group("friends")
+        contact_service.add_contact("John", "1111111111", group_id="friends")
+
+        msg = contact_service.rename_group("friends", "buddies")
+        assert "friends" in msg and "buddies" in msg
+
+        # test group renaming
+        ab = contact_service.address_book
+        assert not ab.has_group("friends")
+        assert ab.has_group("buddies")
+
+        # record still in new group
+        found = ab.find("John", group_id="buddies")
+        assert found is not None
+        assert found.group_id == "buddies"
+
+    def test_remove_group_force_removes_contacts(self, contact_service):
+        """Test removing a group with force flag removes all contacts."""
+        contact_service.add_group("work")
+        contact_service.add_contact("John", "1111111111", group_id="work")
+
+        msg = contact_service.remove_group("work", force=True)
+        assert "work" in msg
+        assert "contacts removed" in msg
+
+        ab = contact_service.address_book
+        assert not ab.has_group("work")
+        # no contacts in work group
+        for key in ab.data.keys():
+            assert not key.startswith("work:")
+    
+    def test_remove_group_without_force(self, contact_service):
+        """Test removing an empty group without force flag."""
+        contact_service.add_group("empty_group")
+        
+        msg = contact_service.remove_group("empty_group", force=False)
+        assert "empty_group" in msg
+        assert "removed" in msg
+        
+        ab = contact_service.address_book
+        assert not ab.has_group("empty_group")
+    
+    def test_get_all_contacts_with_tags_in_grouped_view(self, contact_service):
+        """Test that get_all_contacts with group='all' shows tags correctly."""
+        contact_service.add_group("work")
+        contact_service.add_contact("Alice", "1111111111", group_id="personal")
+        contact_service.add_tag("Alice", "friend")
+        
+        # Switch to work group to add tags to Bob
+        contact_service.set_current_group("work")
+        contact_service.add_contact("Bob", "2222222222", group_id="work")
+        contact_service.add_tag("Bob", "colleague")
+        
+        out = contact_service.get_all_contacts(group="all")
+        
+        # Check that tags are displayed
+        assert "friend" in out
+        assert "colleague" in out
+    
+    def test_get_all_contacts_skips_empty_groups(self, contact_service):
+        """Test that get_all_contacts with group='all' skips empty groups."""
+        contact_service.add_group("empty_work")
+        contact_service.add_group("friends")
+        contact_service.add_contact("Alice", "1111111111", group_id="friends")
+        
+        out = contact_service.get_all_contacts(group="all")
+        
+        # empty_work group should not appear in output
+        assert "empty_work" not in out
+        # friends group should appear
+        assert "friends" in out or "Alice" in out
+    
+    def test_get_all_contacts_with_all_groups_empty(self, contact_service):
+        """Test that get_all_contacts with group='all' returns empty message when no contacts."""
+        contact_service.add_group("work")
+        contact_service.add_group("friends")
+        
+        out = contact_service.get_all_contacts(group="all")
+        
+        # Should return empty message since all groups are empty
+        assert "Address book is empty" in out
 
 
 class TestTagManagement:
@@ -460,13 +772,15 @@ class TestTagSearch:
         # Pavlo has ['ml', 'ai'], Anna has ['ai']
         results = sorting_service.find_by_tags_all(["ml", "ai"])
         assert len(results) == 1
-        assert results[0][0] == "Pavlo"
+        # Names include group prefix
+        assert "Pavlo" in results[0][0]
     
     def test_find_by_tags_all_with_string(self, sorting_service):
         """Test finding contacts with all specified tags (string input)."""
         results = sorting_service.find_by_tags_all("ml,ai")
         assert len(results) == 1
-        assert results[0][0] == "Pavlo"
+        # Names include group prefix
+        assert "Pavlo" in results[0][0]
     
     def test_find_by_tags_all_no_matches(self, sorting_service):
         """Test finding contacts when no one has all tags."""
@@ -482,17 +796,19 @@ class TestTagSearch:
         """Test finding contacts with single tag."""
         results = sorting_service.find_by_tags_all(["ai"])
         assert len(results) == 2  # Both Pavlo and Anna have 'ai'
-        names = [name for name, _ in results]
-        assert "Pavlo" in names
-        assert "Anna" in names
+        # Names include group prefix, check if contact name is in result
+        names_str = str([name for name, _ in results])
+        assert "Pavlo" in names_str
+        assert "Anna" in names_str
     
     def test_find_by_tags_any_with_list(self, sorting_service):
         """Test finding contacts with any of specified tags (list input)."""
         results = sorting_service.find_by_tags_any(["ml", "ai"])
         assert len(results) == 2  # Both have at least one tag
-        names = [name for name, _ in results]
-        assert "Pavlo" in names
-        assert "Anna" in names
+        # Names include group prefix, check if contact name is in result
+        names_str = str([name for name, _ in results])
+        assert "Pavlo" in names_str
+        assert "Anna" in names_str
     
     def test_find_by_tags_any_with_string(self, sorting_service):
         """Test finding contacts with any of specified tags (string input)."""
@@ -513,7 +829,8 @@ class TestTagSearch:
         """Test finding contacts with single tag."""
         results = sorting_service.find_by_tags_any(["ml"])
         assert len(results) == 1
-        assert results[0][0] == "Pavlo"
+        # Names include group prefix
+        assert "Pavlo" in results[0][0]
     
     def test_prepare_tags_with_invalid_tag(self, contact_service):
         """Test _prepare_tags with invalid tag."""
@@ -538,7 +855,8 @@ class TestIterNameRecord:
         """Test iterating over name-record pairs."""
         items = list(populated_service._iter_name_record())
         assert len(items) == 1
-        assert items[0][0] == "John"
+        # Names include group prefix
+        assert "John" in items[0][0]
     
     def test_iter_name_record_with_broken_addressbook(self, contact_service):
         """Test _iter_name_record with broken address book structure."""
@@ -584,6 +902,3 @@ class TestCalculateUpcomingBirthdays:
             congrat_date_str = results[0]["congratulation_date"]
             congrat_date = datetime.strptime(congrat_date_str, "%d.%m.%Y").date()
             assert congrat_date.weekday() == 0  # Monday
-
-
-# --- Note Management Tests ---

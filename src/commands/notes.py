@@ -22,6 +22,8 @@ from rich.tree import Tree
 
 from src.container import Container
 from src.services.note_service import NoteService
+# Import container instance for progressive_params factories
+from src.main import container
 from src.utils.command_decorators import auto_save, handle_service_errors
 from src.utils.validators import split_tags_string, normalize_tag, is_valid_tag
 from src.utils.autocomplete import complete_contact_name, complete_note_name, complete_tag
@@ -264,7 +266,7 @@ def show_note_command(
 @progressive_params(
     contact_name=Container.contact_selector_factory,
     note_name=Container.note_selector_factory,
-    tags_tokens=partial(Container.tags_input_factory, "Enter tags (comma-separated):", required=True)
+    tags=partial(Container.tags_input_factory, "Enter tags (comma-separated):", required=True)
 )
 @inject
 @handle_service_errors
@@ -272,11 +274,15 @@ def show_note_command(
 def _note_tag_add_impl(
     contact_name: str,
     note_name: str,
-    tags: List[str],
+    tags: Optional[List[str]],
     service: NoteService = Provide[Container.note_service],
     filename: str = Provide[Container.config.storage.filename],
 ):
     """Implementation: Add tags to a note."""
+    if not tags:
+        console.print("[yellow]No tags provided.[/yellow]")
+        return
+    
     added = []
     for tag in tags:
         normalized = normalize_tag(tag)
@@ -309,12 +315,14 @@ def note_tag_add_command(
         notes tag-add "John" "Meeting" work urgent   # Direct add
     """
     # Parse tags (handle both list and individual tokens)
-    flat: List[str] = []
-    if isinstance(tags_tokens, list):
-        for token in tags_tokens:
-            flat.extend(split_tags_string(token))
-    else:
-        flat.extend(split_tags_string(tags_tokens))
+    flat: Optional[List[str]] = None
+    if tags_tokens is not None:
+        flat = []
+        if isinstance(tags_tokens, list):
+            for token in tags_tokens:
+                flat.extend(split_tags_string(token))
+        else:
+            flat.extend(split_tags_string(tags_tokens))
     
     return _note_tag_add_impl(contact_name, note_name, flat)
 

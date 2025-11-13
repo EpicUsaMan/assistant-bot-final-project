@@ -6,13 +6,13 @@ separation of concerns and dependency injection support.
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, Iterable, List, Optional, Tuple, Any
 from enum import Enum
-from typing import Callable
+from typing import Dict, Iterable, List, Optional, Tuple, Any, Callable
 
 from src.models.address_book import AddressBook
 from src.models.record import Record
 from src.models.tags import Tags
+from src.models.group import Group, DEFAULT_GROUP_ID, normalize_group_id
 from src.utils.validators import is_valid_tag, normalize_tag, split_tags_string
 
 
@@ -81,24 +81,33 @@ class ContactService:
         """
         self.address_book = address_book
 
-    def add_contact(self, name: str, phone: str) -> str:
+    def add_contact(
+        self,
+        name: str,
+        phone: str,
+        group_id: str | None = None,
+    ) -> str:
         """
-        Add a new contact or update existing contact with phone number.
+        Add a new contact or update existing contact within a group.
 
         Args:
             name: Contact name
             phone: Phone number (10 digits)
+            group_id: Optional explicit group, defaults to current_group_id
 
         Returns:
             Success message
-
-        Raises:
-            ValueError: If phone format is invalid
         """
-        record = self.address_book.find(name)
+        gid = group_id or self.address_book.current_group_id
+
+        # if no such group - create
+        if not self.address_book.has_group(gid):            
+            self.address_book.add_group(gid)
+
+        record = self.address_book.find(name, group_id=gid)
         message = "Contact updated."
         if record is None:
-            record = Record(name)
+            record = Record(name, group_id=gid)
             self.address_book.add_record(record)
             message = "Contact added."
         if phone:
@@ -149,32 +158,70 @@ class ContactService:
 
         return "; ".join(p.value for p in record.phones)
 
-    def get_all_contacts(self, sort_by: "ContactSortBy | None" = None) -> str:
+    def get_all_contacts(
+        self,
+        sort_by: "ContactSortBy | None" = None,
+        group: str | None = None,
+    ) -> str:
         """
-        Get all contacts as a formatted string.
+        Get contacts as a formatted string.
 
         Args:
-            sort_by: Sorting criteria (or None for no sorting)
-
-        Returns:
-            Formatted string with all contacts or message if no contacts exist
+            sort_by: Sorting criteria
+            group: Group filter:
+                None / "current" – only current group
+                "all" – all groups (grouped in output)
+                <group_id> – specific group
         """
-        items = self.list_contacts(sort_by=sort_by)
+        if group != "all":
+            items = self.list_contacts(sort_by=sort_by, group=group)
+            if not items:
+                return "Address book is empty."
 
-        if not items:
+            lines: list[str] = []
+            for name, rec in items:
+                phones = "; ".join(p.value for p in rec.phones) if rec.phones else ""
+                tags = ", ".join(rec.tags_list())
+                line = f"Contact name: {name}, phones: {phones}"
+                if tags:
+                    line += f", tags: {tags}"
+                lines.append(line)
+            return "\n\n".join(lines)
+
+        all_lines: list[str] = []        
+        
+        for group_obj  in self.address_book.iter_groups():
+            # contacts in this group sorted
+            gid = group_obj.id
+            items = self.list_contacts(sort_by=sort_by, group=gid)
+            if not items:
+                continue
+
+            # group header
+            all_lines.append(f"Group: {gid}")
+
+            # contacts in group
+            for name, rec in items:
+                phones = "; ".join(p.value for p in rec.phones) if rec.phones else ""
+                tags = ", ".join(rec.tags_list())
+                line = f"  Contact name: {name}, phones: {phones}"
+                if tags:
+                    line += f", tags: {tags}"
+                all_lines.append(line)
+
+            # separator
+            all_lines.append("")
+
+        # when no contacts
+        if not all_lines:
             return "Address book is empty."
 
-        lines: list[str] = []
-        for name, rec in items:
-            phones = "; ".join(p.value for p in rec.phones) if rec.phones else ""
-            tags = ", ".join(rec.tags_list())
-            line = f"Contact name: {name}, phones: {phones}"
-            if tags:
-                line += f", tags: {tags}"
-            lines.append(line)
+        # remove last divider
+        if all_lines and all_lines[-1] == "":
+            all_lines.pop()
 
-        # double newlines between contacts as in CLI output
-        return "\n\n".join(lines)
+        return "\n".join(all_lines)
+
 
     def add_birthday(self, name: str, birthday: str) -> str:
         """
@@ -289,28 +336,38 @@ class ContactService:
 
     def has_contacts(self) -> bool:
         """
-        Check if address book has any contacts.
+        Check if address book has any contacts in the current group.
 
         Returns:
-            True if address book has contacts, False otherwise
+            True if current group has contacts, False otherwise
         """
-        return len(self.address_book.data) > 0
+        # Use list_contacts to ensure consistency with group filtering
+        return len(self.list_contacts()) > 0
 
     def list_contacts(
             self, 
             sort_by: "ContactSortBy | None" = None,
+            group: str | None = None,
         ) -> List[Tuple[str, Record]]:
         """
-        Return [(name, record)] optionally sorted.
+        Return [(name, record)] optionally sorted and filtered by groups.
 
         Args:
             sort_by: Sorting criteria
-
-        Returns:
-            List of (name, record) tuples
+            group: Group filter:
+                None / "current" (default) – only current group
+                "all" – all groups
+                <group_id> – specific group
         """
 
-        items = list(self.address_book.data.items())
+        gid = group or self.address_book.current_group_id
+        if gid != "all" and not self.address_book.has_group(gid):
+            raise ValueError(f"Group '{gid}' not found")        
+
+        if gid == "all":
+            items = self.address_book.iter_all()
+        else:
+            items = self.address_book.iter_group(gid)
 
         sorting = self._SORTING_STRATEGIES
         effective_sort_by = sort_by or self.DEFAULT_SORT_BY
@@ -485,3 +542,57 @@ class ContactService:
             if want & have:
                 result.append((name, rec))
         return result
+
+    # --- Groups management ---
+    @property
+    def current_group_id(self) -> str:
+        """Current active group id stored in AddressBook."""
+        return getattr(self.address_book, "current_group_id", DEFAULT_GROUP_ID)
+    
+    def set_current_group(self, group_id: str) -> None:
+        """
+        Switch active group.
+
+        Raises:
+            ValueError: if group does not exist.
+        """
+        gid = normalize_group_id(group_id)
+        if not self.address_book.has_group(gid):
+            raise ValueError(f"Group '{gid}' not found.")
+        self.address_book.current_group_id = gid
+
+    def get_current_group(self) -> str:
+        return self.current_group_id    
+
+    def list_groups(self) -> list[tuple[str, int]]:
+        """
+        Returns: list of (group_id, contacts_count) sorted by group_id.
+        """
+        result: list[tuple[str, int]] = []
+        for group in self.address_book.iter_groups():
+            count = sum(
+                1
+                for rec in self.address_book.data.values()
+                if getattr(rec, "group_id", DEFAULT_GROUP_ID) == group.id
+            )
+            result.append((group.id, count))
+        return result
+
+    def add_group(self, group_id: str, title: str | None = None) -> None:
+        """
+        Create new group.
+
+        Raises:
+            ValueError: if group id invalid or already exists.
+        """
+        self.address_book.add_group(group_id, title)
+
+    def rename_group(self, old_id: str, new_id: str) -> str:
+        self.address_book.rename_group(old_id, new_id)
+        return f"Group '{old_id}' renamed to '{new_id}'."
+
+    def remove_group(self, group_id: str, force: bool = False) -> str:
+        self.address_book.remove_group(group_id, force=force)
+        if force:
+            return f"Group '{group_id}' and its contacts removed."
+        return f"Group '{group_id}' removed."        

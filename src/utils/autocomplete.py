@@ -12,6 +12,7 @@ from typing import List, Optional
 from dependency_injector.wiring import Provide, inject
 from src.container import Container
 from src.services.note_service import NoteService
+from src.models.group import DEFAULT_GROUP_ID
 
 
 @inject
@@ -36,7 +37,8 @@ def _complete_contact_name_impl(
         
         # Get all contact names from service
         contacts = service.list_contacts()
-        names = [name for name, _ in contacts]
+        # Extract contact name from "group:name" format
+        names = [name.split(":", 1)[1] if ":" in name else name for name, _ in contacts]
         
         # Filter by incomplete string (case-insensitive)
         if incomplete:
@@ -101,9 +103,11 @@ def _complete_note_name_impl(
             # Fallback: Get all note names from all contacts
             all_note_names = set()
             contacts = service.list_contacts()
-            for name, _ in contacts:
+            for key, _ in contacts:
+                # Extract contact name from "group:name" format
+                contact_name_only = key.split(":", 1)[1] if ":" in key else key
                 try:
-                    notes = service.list_notes(name)
+                    notes = service.list_notes(contact_name_only)
                     all_note_names.update(note.name for note in notes)
                 except ValueError:
                     pass
@@ -190,9 +194,11 @@ def _complete_tag_impl(
         else:
             # Fallback: Get all tags from all notes in all contacts
             contacts = service.list_contacts()
-            for name, _ in contacts:
+            for key, _ in contacts:
+                # Extract contact name from "group:name" format
+                contact_name_only = key.split(":", 1)[1] if ":" in key else key
                 try:
-                    notes = service.list_notes(name)
+                    notes = service.list_notes(contact_name_only)
                     for note in notes:
                         all_tags.update(note.tags.value)  # Fixed: use .value to get list
                 except ValueError:

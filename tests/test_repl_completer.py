@@ -47,35 +47,39 @@ class TestContextAwareCompleter:
         assert completer.original_completer == mock_original_completer
         assert completer.click_ctx == mock_click_ctx
     
-    def test_empty_text_delegates_to_original(self, mock_original_completer, mock_click_ctx):
-        """Test that empty text delegates to original completer."""
+    def test_empty_text_shows_all_commands(self, mock_original_completer, mock_click_ctx):
+        """Test that empty text shows all available commands from MultiCommand."""
+        import click
         from prompt_toolkit.completion import Completion
         
-        mock_original_completer.get_completions.return_value = iter([
-            Completion("add", start_position=0),
-            Completion("list", start_position=0),
-        ])
+        # Set up mock command as MultiCommand with list_commands
+        mock_click_ctx.command = Mock(spec=click.MultiCommand)
+        mock_click_ctx.command.list_commands.return_value = ["add", "list", "notes"]
         
         completer = ContextAwareCompleter(mock_original_completer, mock_click_ctx)
         document = Document("")
         
         completions = list(completer.get_completions(document, None))
-        assert len(completions) == 2
-        mock_original_completer.get_completions.assert_called_once()
+        assert len(completions) == 3
+        assert [c.text for c in completions] == ["add", "list", "notes"]
     
-    def test_single_word_without_space_shows_commands(self, mock_original_completer, mock_click_ctx):
-        """Test that typing first word shows command completions."""
+    def test_single_word_without_space_shows_matching_commands(self, mock_original_completer, mock_click_ctx):
+        """Test that typing first word shows matching command completions."""
+        import click
         from prompt_toolkit.completion import Completion
         
-        mock_original_completer.get_completions.return_value = iter([
-            Completion("add", start_position=-2),
-        ])
+        # Set up mock command as MultiCommand with list_commands
+        mock_click_ctx.command = Mock(spec=click.MultiCommand)
+        mock_click_ctx.command.list_commands.return_value = ["add", "all", "notes", "list"]
         
         completer = ContextAwareCompleter(mock_original_completer, mock_click_ctx)
         document = Document("ad")
         
         completions = list(completer.get_completions(document, None))
-        mock_original_completer.get_completions.assert_called_once()
+        # Should only show commands starting with "ad"
+        assert len(completions) == 1
+        assert completions[0].text == "add"
+        assert completions[0].start_position == -2  # Replace "ad" with "add"
     
     def test_no_click_ctx_returns_empty(self, mock_original_completer):
         """Test that without Click context, no completions are provided."""
