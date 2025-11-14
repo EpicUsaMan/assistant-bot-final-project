@@ -44,6 +44,9 @@ python src/main.py
 python src/main.py add "John Doe" 1234567890
 python src/main.py add-birthday "John Doe" 15.05.1990
 python src/main.py all --sort-by name
+
+# Birthday commands
+python src/main.py add-birthday "John Doe" 15.05.1990
 python src/main.py birthdays
 ```
 

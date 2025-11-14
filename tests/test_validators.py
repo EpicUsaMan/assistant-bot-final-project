@@ -17,55 +17,28 @@ from src.utils.validators import split_tags_string
 
 
 class TestPhoneValidator:
-    def test_validate_phone_valid_local_10_digits(self):
-        assert validate_phone("0123456789") == "0123456789"
+    def test_validate_phone_local_number(self):
+        assert validate_phone("067-235-5960") == "+380672355960"
 
-    def test_validate_phone_normalizes_spaces_and_dashes(self):
-        assert validate_phone("0 123-456-789") == "0123456789"
-        assert validate_phone("(012) 345-67-89") == "0123456789"
+    def test_validate_phone_international(self):
+        assert validate_phone("+1 (650) 253-0000") == "+16502530000"
 
-    def test_validate_phone_ua_international_without_plus(self):
-        assert validate_phone("380123456789") == "0123456789"
+    def test_validate_phone_blank_raises(self):
+        with pytest.raises(typer.BadParameter, match="cannot be empty"):
+            validate_phone("  ")
 
-    def test_validate_phone_letters_rejected(self):
-        with pytest.raises(typer.BadParameter) as exc:
-            validate_phone("12345abcde")
-        assert "letter" in str(exc.value).lower()
+    def test_validate_phone_invalid_format(self):
+        with pytest.raises(typer.BadParameter, match="Phone number is not possible: abc123"):
+            validate_phone("abc123")
 
-    def test_validate_phone_too_short_rejected(self):
-        with pytest.raises(typer.BadParameter) as exc:
+    def test_validate_phone_not_possible(self):
+        with pytest.raises(typer.BadParameter, match="Phone number is not possible"):
             validate_phone("123")
-        assert "exactly 10" in str(exc.value).lower()
 
-    def test_validate_phone_all_identical_digits_rejected(self):
-        with pytest.raises(typer.BadParameter) as exc:
-            validate_phone("0000000000")
-        assert "identical" in str(exc.value).lower()
-
-    def test_validate_phone_long_but_reducible_to_10(self):
-        # US-Canada like 11 digits without '+', NSN=[1:] -> accept last 10 via libphonenumber path
-        out = validate_phone("16502530000")
-        assert len(out) == 10
-        assert out.isdigit()
-
-    def test_validate_phone_too_long_not_reducible(self):
-        with pytest.raises(typer.BadParameter):
-            validate_phone("9999999999999")
-    
-    def test_validate_phone_empty(self):
-        """Test phone validator rejects empty string."""
-        with pytest.raises(typer.BadParameter, match="empty"):
-            validate_phone("")
-    
-    def test_validate_phone_only_non_digits_after_cleanup(self):
-        """Test phone validator rejects strings with no digits."""
-        with pytest.raises(typer.BadParameter, match="must contain digits"):
-            validate_phone("---+++")
-    
-    def test_validate_phone_ua_international_12_digits_with_all_same(self):
-        """Test UA international format with all identical digits."""
-        with pytest.raises(typer.BadParameter, match="identical"):
-            validate_phone("380000000000")
+    def test_validate_phone_duplicate_formatting(self):
+        first = validate_phone("0672355960")
+        second = validate_phone("+380 67 235 5960")
+        assert first == second == "+380672355960"
 
 class TestBirthdayValidator:
     def test_validate_birthday_valid(self):

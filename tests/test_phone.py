@@ -1,60 +1,50 @@
-"""Tests for the Phone class."""
+"""Tests for the Phone class with libphonenumber-backed logic."""
 
 import pytest
+from phonenumbers import NumberParseException
+
 from src.models.phone import Phone
 
 
-def test_phone_initialization_with_valid_number():
-    """Test that Phone initializes with a valid 10-digit number."""
-    phone = Phone("1234567890")
-    assert phone.value == "1234567890"
+def test_phone_accepts_local_ua_number():
+    phone = Phone("067-235-5960")
+    assert phone.value == "+380672355960"
+    assert phone.display_value == "+380 67 235 5960"
+    assert phone.country_code == 380
+    assert phone.national_number == 672355960
 
 
-def test_phone_with_non_digit_characters_raises_error():
-    """Test that Phone raises ValueError for non-digit characters."""
-    with pytest.raises(ValueError, match="Phone number must contain only digits"):
-        Phone("123-456-7890")
+def test_phone_accepts_international_number():
+    phone = Phone("+1 (650) 253-0000")
+    assert phone.value == "+16502530000"
+    assert phone.display_value == "+1 650-253-0000"
+    assert phone.country_code == 1
+    assert phone.national_number == 6502530000
 
 
-def test_phone_with_letters_raises_error():
-    """Test that Phone raises ValueError for letters in number."""
-    with pytest.raises(ValueError, match="Phone number must contain only digits"):
-        Phone("12345abcde")
+def test_phone_accepts_ukrainian_international_number_without_plus():
+    phone = Phone("0038 067 235 5960")
+    assert phone.value == "+380672355960"
+    assert phone.display_value == "+380 67 235 5960"
 
 
-def test_phone_with_less_than_10_digits_raises_error():
-    """Test that Phone raises ValueError for less than 10 digits."""
-    with pytest.raises(ValueError, match="Phone number must be exactly 10 digits"):
-        Phone("123456789")
+def test_phone_invalid_number_raises_value_error():
+    with pytest.raises(ValueError, match="Phone number is not possible: 123"):
+        Phone("123")
+
+    with pytest.raises(ValueError, match="Phone number cannot be empty"):
+        Phone("  ")
 
 
-def test_phone_with_more_than_10_digits_raises_error():
-    """Test that Phone raises ValueError for more than 10 digits."""
-    with pytest.raises(ValueError, match="Phone number must be exactly 10 digits"):
-        Phone("12345678901")
+def test_phone_display_value_national():
+    phone = Phone("0672355960")
+    assert phone.display_value_national in {"067 235 5960", "(067) 235 5960"}
 
 
-def test_phone_with_spaces_raises_error():
-    """Test that Phone raises ValueError for spaces in number."""
-    with pytest.raises(ValueError, match="Phone number must contain only digits"):
-        Phone("123 456 7890")
+def test_phone_equality_based_on_canonical():
+    assert Phone("0672355960") == Phone("+380672355960")
 
 
-def test_phone_inheritance_from_field():
-    """Test that Phone inherits from Field and has str method."""
-    phone = Phone("5555555555")
-    assert str(phone) == "5555555555"
-
-
-def test_phone_equality():
-    """Test that two Phone objects with same number are equal."""
-    phone1 = Phone("1234567890")
-    phone2 = Phone("1234567890")
-    assert phone1 == phone2
-
-
-def test_phone_with_empty_string_raises_error():
-    """Test that Phone raises ValueError for empty string."""
-    with pytest.raises(ValueError, match="Phone number must contain only digits"):
-        Phone("")
-
+def test_phone_str_returns_display_value():
+    phone = Phone("0672355960")
+    assert str(phone) == phone.display_value

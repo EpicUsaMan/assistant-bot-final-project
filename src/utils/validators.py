@@ -20,9 +20,8 @@ Example:
 
 import re
 import typer
-import phonenumbers
 from datetime import datetime, date
-from phonenumbers.phonenumberutil import NumberParseException, PhoneNumberType
+from src.models.phone import Phone
 
 _ACEPTED_PHONE_LEN = 10
 _MAX_AGE_YEARS = 120
@@ -30,86 +29,17 @@ _BDAY_FMT = "%d.%m.%Y"
 _EMAIL_RE = re.compile(r"^(?P<local>[A-Za-z0-9._%+-]+)@(?P<domain>[A-Za-z0-9.-]+\.[A-Za-z]{2,24})$")
 
 def validate_phone(value: str) -> str:
-    """
-    Accept flexible input, validate by libphonenumber,
-    and store EXACTLY 10 digits.
-
-    Rules:
-      - Letters are not allowed (explicit error).
-      - If digits == 12 and start with '380' -> treat as UA and return '0' + last 9.
-      - If digits == 10 -> accept as-is (after basic checks).
-
-    Returns:
-        10-digit string
-
-    Raises:
-        typer.BadParameter
-    """
-
+    """Normalize phone number (flexible input → E.164 string)."""
     raw = (value or "").strip()
     if not raw:
-        raise typer.BadParameter("Phone is empty")
+        raise typer.BadParameter("Phone number cannot be empty")
 
-    # Only digits aceptable
-    if re.search(r"[A-Za-z]", raw):
-        raise typer.BadParameter("Phone must not contain letters")
-    
-    # Keep only digits for logic from here on
-    digits = re.sub(r"\D+", "", raw)
-    if not digits:
-        raise typer.BadParameter("Phone must contain digits")
+    try:
+        phone = Phone(raw)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
-    # Fast-path UA in international: 380XXXXXXXXX -> 0XXXXXXXXX
-    if len(digits) == 12 and digits.startswith("380"):
-        normalized = "0" + digits[-9:]
-        if re.fullmatch(r"^(\d)\1{9}$", normalized):
-            raise typer.BadParameter("Phone looks invalid (all digits identical)")
-        return normalized
-
-    # Local 10-digit input
-    if len(digits) == _ACEPTED_PHONE_LEN:
-        # trivial input guard
-        if re.fullmatch(r"^(\d)\1{9}$", digits):
-            raise typer.BadParameter("Phone looks invalid (all digits identical)")
-        return digits
-
-    # For longer numbers, try to parse internationally
-    if len(digits) > _ACEPTED_PHONE_LEN:
-        try:
-            num = phonenumbers.parse("+" + digits, None)
-        except NumberParseException:
-            raise typer.BadParameter(
-                "Unsupported phone format. We store exactly 10 digits."
-            )
-
-        # Allow only person-reachable types
-        typ = phonenumbers.number_type(num)
-        if typ not in (
-            PhoneNumberType.MOBILE,
-            PhoneNumberType.FIXED_LINE,
-            PhoneNumberType.FIXED_LINE_OR_MOBILE,
-        ):
-            raise typer.BadParameter("Unsupported phone type")
-
-        nsn = phonenumbers.national_significant_number(num)
-        region = phonenumbers.region_code_for_number(num)
-
-        if len(nsn) == _ACEPTED_PHONE_LEN:
-            normalized = nsn
-        elif region == "UA" and len(nsn) == 9:
-            normalized = "0" + nsn
-        else:
-            raise typer.BadParameter(
-                f"We store exactly 10 digits. Your number's national part has "
-                f"{len(nsn)} digits (region {region or 'unknown'})."
-            )
-
-        if re.fullmatch(r"^(\d)\1{9}$", normalized):
-            raise typer.BadParameter("Phone looks invalid (all digits identical)")
-        return normalized
-
-    # Anything shorter than 10 digits is invalid
-    raise typer.BadParameter("Phone must be exactly 10 digits")
+    return phone.value
 
 
 def validate_birthday(value: str) -> str:
