@@ -6,6 +6,8 @@ from src.models.birthday import Birthday
 from src.models.name import Name
 from src.models.note import Note
 from src.models.phone import Phone
+from src.models.email import Email
+from src.models.address import Address
 from src.models.tags import Tags
 from src.utils.validators import is_valid_tag, normalize_tag
 
@@ -14,12 +16,14 @@ from src.models.group import DEFAULT_GROUP_ID
 
 class Record:
     """
-    Class for storing contact information including name, phones, birthday, and notes.
+    Class for storing contact information including name, phones, birthday, email, address, and notes.
     
     Attributes:
         name: Contact's name (Name object)
         phones: List of phone numbers (Phone objects)
         birthday: Contact's birthday (Birthday object, optional)
+        email: Contact's email (Email object, optional)
+        address: Contact's address (Address object, optional)
         tags: Contact's tags (Tags object)
         notes: Dictionary of notes (Note objects, keyed by note name)
     """
@@ -30,10 +34,13 @@ class Record:
         
         Args:
             name: The contact's name
+            group_id: Group identifier (optional)
         """
         self.name = Name(name)
         self.phones: list[Phone] = []
         self.birthday: Optional[Birthday] = None
+        self.email: Optional[Email] = None
+        self.address: Optional[Address] = None
         self.tags = Tags()
         self.notes: dict[str, Note] = {}
         self.group_id: str | None = group_id
@@ -97,8 +104,9 @@ class Record:
         Returns:
             Phone object if found, None otherwise
         """
+        canonical = Phone(phone).value
         for phone_obj in self.phones:
-            if phone_obj.value == phone:
+            if phone_obj.value == canonical:
                 return phone_obj
         return None
     
@@ -114,10 +122,56 @@ class Record:
         """
         self.birthday = Birthday(birthday)
     
+    def add_email(self, email: str) -> None:
+        """
+        Add or update email address for the contact.
+        
+        Args:
+            email: The email address
+            
+        Raises:
+            ValueError: If email format is invalid
+        """
+        self.email = Email(email)
+    
+    def remove_email(self) -> None:
+        """Remove email address from the contact."""
+        self.email = None
+    
+    def set_address(
+        self,
+        country: str,
+        city: str,
+        address_line: str,
+    ) -> None:
+        """
+        Set address for the contact.
+        
+        Args:
+            country: Country code (e.g., "UA", "PL")
+            city: City name
+            address_line: Street address
+        """
+        self.address = Address(country, city, address_line)
+    
+    def remove_address(self) -> None:
+        """Remove address information from the contact."""
+        self.address = None
+    
     def __str__(self) -> str:
-        phones_str = '; '.join(p.value for p in self.phones)
-        birthday_str = f", birthday: {self.birthday}" if self.birthday else ""
-        return f"Contact name: {self.name.value}, phones: {phones_str}{birthday_str}"
+        phones_str = '; '.join(p.display_value for p in self.phones) if self.phones else ""
+        parts = [f"Contact name: {self.name.value}"]
+        
+        if phones_str:
+            parts.append(f"phones: {phones_str}")
+        if self.birthday:
+            parts.append(f"birthday: {self.birthday}")
+        if self.email:
+            parts.append(f"email: {self.email.value}")
+        if self.address and not self.address.is_empty():
+            parts.append(f"address: {self.address}")
+        
+        return ", ".join(parts)
     
     def __repr__(self) -> str:
         return f"Record(name={self.name.value!r}, phones={[p.value for p in self.phones]})"
@@ -126,16 +180,55 @@ class Record:
         return self.__dict__
 
     def __setstate__(self, state: dict) -> None:
-        """Backward compatibility for old pickles (no tags / no group_id)."""
+        """Backward compatibility for old pickles (no tags / no group_id / no email / no address)."""
         self.__dict__.update(state)
 
         if "tags" not in self.__dict__:
             self.tags = Tags()
-        if "notes" not in self.__dict__:
-            self.notes = {}
+        
+        # migrate phone instances / raw strings
+        migrated: list[Phone] = []
+        for item in getattr(self, "phones", []):
+            if isinstance(item, Phone):
+                # recreate phone object from canonical string
+                migrated.append(Phone(item.display_value))
+            else:
+                # in case a string was saved in the pickle
+                migrated.append(Phone(str(item)))
+        self.phones = migrated
 
         if not hasattr(self, "group_id") or not self.group_id:
             self.group_id = DEFAULT_GROUP_ID
+        
+        # Initialize new fields if missing
+        if "email" not in self.__dict__:
+            self.email = None
+        if "address" not in self.__dict__:
+            self.address = None
+        # Handle old format where address was stored as separate fields
+        elif not isinstance(self.address, Address):
+            # If address is not an Address object, try to migrate from old format
+            if hasattr(self, "country") or hasattr(self, "city") or hasattr(self, "address_line"):
+                country = getattr(self, "country", None)
+                city = getattr(self, "city", None)
+                address_line = getattr(self, "address_line", None)
+                if country or city or address_line:
+                    self.address = Address(
+                        country or "",
+                        city or "",
+                        address_line or ""
+                    )
+                else:
+                    self.address = None
+                # Clean up old fields
+                if hasattr(self, "country"):
+                    delattr(self, "country")
+                if hasattr(self, "city"):
+                    delattr(self, "city")
+                if hasattr(self, "address_line"):
+                    delattr(self, "address_line")
+            else:
+                self.address = None
 
     # --- Tags API ---
     def set_tags(self, tags: list[str] | str):

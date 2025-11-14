@@ -21,6 +21,7 @@ import click
 from rich.console import Console
 from rich.panel import Panel
 from src.container import Container
+from src.utils.paths import get_storage_path
 from src.services.contact_service import ContactService
 from rich.tree import Tree
 
@@ -32,7 +33,7 @@ app = typer.Typer(
 
 console = Console()
 container = Container()
-container.config.storage.filename.from_value("addressbook.pkl")
+container.config.storage.filename.from_value(str(get_storage_path()))
 
 # Track if container is already wired and commands registered
 _container_wired = False
@@ -198,6 +199,12 @@ def auto_register_commands():
             elif module_name == "search":
                 # Register as subcommand group: search contacts, search notes, search menu
                 app.add_typer(module.app, name="search")
+            elif module_name == "email":
+                # Register as subcommand group: email add, email remove
+                app.add_typer(module.app, name="email")
+            elif module_name == "address":
+                # Register as subcommand group: address set, address remove
+                app.add_typer(module.app, name="address")
             else:
                 # Register commands at root level
                 app.add_typer(module.app, name="")
@@ -231,6 +238,11 @@ def interactive():
     try:
         repl(ctx, prompt_kwargs=prompt_kwargs)
     except (EOFError, KeyboardInterrupt):
+        # Save data directly via address_book instead of container.save_data()
+        # This works even when container is wrapped as DynamicContainer after wiring
+        book = container.address_book()
+        filename = container.config.storage.filename()
+        book.save_to_file(filename)
         console.print("\n[bold green]Good bye![/bold green]")
 
 

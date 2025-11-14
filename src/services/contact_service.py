@@ -118,11 +118,12 @@ class ContactService:
     
     def delete_contact(self, name: str) -> str:
         """Delete a contact from the address book."""
-        if name not in self.address_book.data:
+        # Use AddressBook.delete() which handles the group_id:name key format
+        try:
+            self.address_book.delete(name)
+            return f"Contact '{name}' deleted successfully"
+        except KeyError:
             raise ValueError(f"Contact '{name}' not found")
-        
-        del self.address_book.data[name]
-        return f"Contact '{name}' deleted successfully"
 
 
     def change_contact(self, name: str, old_phone: str, new_phone: str) -> str:
@@ -167,8 +168,8 @@ class ContactService:
         if not record.phones:
             return f"No phones for contact '{name}'."
 
-        return "; ".join(p.value for p in record.phones)
-    
+        return "; ".join(p.display_value for p in record.phones)
+
     def get_all_contacts(
         self,
         sort_by: "ContactSortBy | None" = None,
@@ -582,4 +583,96 @@ class ContactService:
         self.address_book.remove_group(group_id, force=force)
         if force:
             return f"Group '{group_id}' and its contacts removed."
-        return f"Group '{group_id}' removed."        
+        return f"Group '{group_id}' removed."
+    
+    # --- Email management ---
+    def add_email(self, name: str, email: str) -> str:
+        """
+        Add or update email address for a contact.
+        
+        Args:
+            name: Contact name
+            email: Email address
+            
+        Returns:
+            Success message
+            
+        Raises:
+            ValueError: If contact not found or email invalid
+        """
+        record = self.address_book.find(name)
+        if record is None:
+            raise ValueError(f"Contact '{name}' not found.")
+        record.add_email(email)
+        return f"Email added to {name}."
+    
+    def remove_email(self, name: str) -> str:
+        """
+        Remove email address from a contact.
+        
+        Args:
+            name: Contact name
+            
+        Returns:
+            Success message
+            
+        Raises:
+            ValueError: If contact not found
+        """
+        record = self.address_book.find(name)
+        if record is None:
+            raise ValueError(f"Contact '{name}' not found.")
+        if record.email is None:
+            return f"No email set for contact '{name}'."
+        record.remove_email()
+        return f"Email removed from {name}."
+    
+    # --- Address management ---
+    def set_address(
+        self,
+        name: str,
+        country: str,
+        city: str,
+        address_line: str,
+    ) -> str:
+        """
+        Set address for a contact.
+        
+        Args:
+            name: Contact name
+            country: Country code (e.g., "UA", "PL")
+            city: City name
+            address_line: Street address
+            
+        Returns:
+            Success message
+            
+        Raises:
+            ValueError: If contact not found
+        """
+        record = self.address_book.find(name)
+        if record is None:
+            raise ValueError(f"Contact '{name}' not found.")
+        record.set_address(country, city, address_line)
+        return f"Address set for {name}."
+    
+    def remove_address(self, name: str) -> str:
+        """
+        Remove address from a contact.
+        
+        Args:
+            name: Contact name
+            
+        Returns:
+            Success message
+            
+        Raises:
+            ValueError: If contact not found
+        """
+        record = self.address_book.find(name)
+        if record is None:
+            raise ValueError(f"Contact '{name}' not found.")
+        if record.address is None or record.address.is_empty():
+            return f"No address set for contact '{name}'."
+        record.remove_address()
+        return f"Address removed from {name}."        

@@ -1,0 +1,164 @@
+{
+  "countries": {
+    "UA": {
+      "name": "Україна",
+      "cities": [
+        "Київ",
+        "Львів",
+        "Харків",
+        "Одеса",
+        "Дніпро",
+        "Запоріжжя",
+        "Вінниця",
+        "Полтава",
+        "Чернівці",
+        "Івано-Франківськ",
+        "Тернопіль",
+        "Луцьк",
+        "Рівне",
+        "Житомир",
+        "Кропивницький",
+        "Миколаїв",
+        "Маріуполь",
+        "Суми",
+        "Чернігів"
+      ]
+    },
+    "PL": {
+      "name": "Польща",
+      "cities": [
+        "Варшава",
+        "Краків",
+        "Вроцлав",
+        "Познань",
+        "Гданськ",
+        "Щецин",
+        "Бидгощ",
+        "Люблін",
+        "Катовиці",
+        "Білосток"
+      ]
+    },
+    "US": {
+      "name": "United States",
+      "cities": [
+        "New York",
+        "Los Angeles",
+        "Chicago",
+        "Houston",
+        "Phoenix",
+        "Philadelphia",
+        "San Antonio",
+        "San Diego",
+        "Dallas",
+        "San Jose"
+      ]
+    },
+    "GB": {
+      "name": "United Kingdom",
+      "cities": [
+        "London",
+        "Manchester",
+        "Birmingham",
+        "Glasgow",
+        "Liverpool",
+        "Leeds",
+        "Edinburgh",
+        "Bristol",
+        "Cardiff",
+        "Belfast"
+      ]
+    },
+    "DE": {
+      "name": "Deutschland",
+      "cities": [
+        "Berlin",
+        "Munich",
+        "Hamburg",
+        "Cologne",
+        "Frankfurt",
+        "Stuttgart",
+        "Düsseldorf",
+        "Dortmund",
+        "Essen",
+        "Leipzig"
+      ]
+    },
+    "FR": {
+      "name": "France",
+      "cities": [
+        "Paris",
+        "Marseille",
+        "Lyon",
+        "Toulouse",
+        "Nice",
+        "Nantes",
+        "Strasbourg",
+        "Montpellier",
+        "Bordeaux",
+        "Lille"
+      ]
+    },
+    "IT": {
+      "name": "Italia",
+      "cities": [
+        "Rome",
+        "Milan",
+        "Naples",
+        "Turin",
+        "Palermo",
+        "Genoa",
+        "Bologna",
+        "Florence",
+        "Bari",
+        "Catania"
+      ]
+    },
+    "ES": {
+      "name": "España",
+      "cities": [
+        "Madrid",
+        "Barcelona",
+        "Valencia",
+        "Seville",
+        "Zaragoza",
+        "Málaga",
+        "Murcia",
+        "Palma",
+        "Las Palmas",
+        "Bilbao"
+      ]
+    },
+    "CA": {
+      "name": "Canada",
+      "cities": [
+        "Toronto",
+        "Montreal",
+        "Vancouver",
+        "Calgary",
+        "Edmonton",
+        "Ottawa",
+        "Winnipeg",
+        "Quebec City",
+        "Hamilton",
+        "Kitchener"
+      ]
+    },
+    "AU": {
+      "name": "Australia",
+      "cities": [
+        "Sydney",
+        "Melbourne",
+        "Brisbane",
+        "Perth",
+        "Adelaide",
+        "Gold Coast",
+        "Newcastle",
+        "Canberra",
+        "Sunshine Coast",
+        "Wollongong"
+      ]
+    }
+  },
+  "user_cities": {}
+}

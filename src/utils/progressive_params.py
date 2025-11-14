@@ -244,6 +244,86 @@ class TextInput(ParameterProvider):
         return result
 
 
+class EmailInput(ParameterProvider):
+    """
+    Specialized input provider for email addresses using typer.prompt.
+    
+    WHY typer.prompt instead of questionary.text?
+    ==============================================
+    
+    The questionary library uses prompt_toolkit under the hood, which has
+    compatibility issues with PowerShell on Windows when handling the '@' symbol.
+    Even when users try to escape it or use quotes, the '@' character often
+    fails to be captured correctly in interactive prompts.
+    
+    typer.prompt uses Python's standard input() function, which:
+    - Works reliably across all platforms (Windows PowerShell, CMD, Linux, Mac)
+    - Properly handles special characters like '@' without issues
+    - Provides consistent behavior regardless of terminal/shell
+    - Is simpler and more predictable for single-line text input
+    
+    This ensures users can always enter email addresses correctly, even in
+    PowerShell environments where questionary has known limitations.
+    
+    Trade-offs:
+    - Less fancy UI (no rich formatting during input)
+    - Still provides clean, functional email input
+    - Better reliability > fancy UI for critical input like email
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        required: bool = True,
+        default: str = "",
+    ):
+        """
+        Initialize email input provider.
+        
+        Args:
+            message: Prompt message to display
+            required: Whether email is required (default: True)
+            default: Default value if user just presses Enter (default: empty)
+        """
+        self.message = message
+        self.required = required
+        self.default = default
+    
+    def get_value(self, param_name: str, current_value: Any, **context: Any) -> Optional[str]:
+        """
+        Get email input from user using typer.prompt.
+        
+        This method uses typer.prompt instead of questionary to avoid
+        PowerShell compatibility issues with the '@' symbol.
+        """
+        if current_value is not None:
+            return current_value
+        
+        # Use typer.prompt for reliable '@' symbol handling
+        # This works correctly in PowerShell, CMD, and all other terminals
+        import typer
+        
+        try:
+            result = typer.prompt(
+                self.message,
+                default=self.default if self.default else None,
+                type=str
+            )
+        except (EOFError, KeyboardInterrupt):
+            # User cancelled (Ctrl+C or Ctrl+Z)
+            console.print("[yellow]Operation cancelled.[/yellow]")
+            return None
+        
+        # Handle empty input
+        if not result or not result.strip():
+            if self.required:
+                console.print("[yellow]Email is required.[/yellow]")
+                return None
+            return self.default if self.default else None
+        
+        return result.strip()
+
+
 class ConfirmInput(ParameterProvider):
     """
     Provides yes/no confirmation input.
@@ -610,3 +690,137 @@ class SelectInput(ParameterProvider):
         
         return None
 
+
+class CountrySelector(ParameterProvider):
+    """
+    Provides country selection from locations catalog.
+    
+    Shows a select menu with countries from the catalog.
+    """
+    
+    def __init__(self, message: str = "Select country:"):
+        """
+        Initialize CountrySelector.
+        
+        Args:
+            message: Prompt message for selection
+        """
+        self.message = message
+    
+    def get_value(self, param_name: str, current_value: Any, **context: Any) -> Optional[str]:
+        """Select a country from catalog."""
+        if current_value is not None:
+            return current_value
+        
+        from src.utils.locations import get_catalog
+        
+        catalog = get_catalog()
+        countries = catalog.get_countries()
+        
+        if not countries:
+            console.print("[yellow]No countries available in catalog.[/yellow]")
+            return None
+        
+        # Build choices for SelectInput: (country_code, "Code - Name")
+        choices = [(code, f"{code} - {name}") for code, name in countries]
+        
+        # Use SelectInput for selection
+        selector = SelectInput(self.message, choices, required=True)
+        return selector.get_value(param_name, current_value, **context)
+
+
+class CitySelector(ParameterProvider):
+    """
+    Provides city selection from locations catalog with ability to add new cities.
+    
+    Requires country_code parameter to be filled first.
+    If city is not found in catalog, offers to add it (variant A).
+    """
+    
+    def __init__(self, message: str = "Select city:"):
+        """
+        Initialize CitySelector.
+        
+        Args:
+            message: Prompt message for selection
+        """
+        self.message = message
+    
+    def get_value(self, param_name: str, current_value: Any, **context: Any) -> Optional[str]:
+        """Select a city from catalog or add new one."""
+        if current_value is not None:
+            return current_value
+        
+        # Get country_code from context
+        country_code = context.get('country_code') or context.get('country')
+        if not country_code:
+            console.print("[red]Error: Country must be selected first[/red]")
+            return None
+        
+        from src.utils.locations import get_catalog
+        
+        catalog = get_catalog()
+        
+        # Check if country exists
+        if not catalog.has_country(country_code):
+            console.print(f"[red]Error: Country '{country_code}' not found in catalog[/red]")
+            return None
+        
+        country_name = catalog.get_country_name(country_code) or country_code
+        cities = catalog.get_cities(country_code, include_user=True)
+        
+        # Build choices: (city_name, display_text) + "Add new city" option
+        choices = []
+        for city in cities:
+            marker = " (user)" if catalog.is_user_city(country_code, city) else ""
+            choices.append((city, f"{city}{marker}"))
+        
+        # Add "Add new city" option
+        choices.append(("__ADD_NEW__", "[Add new city]"))
+        
+        # Use SelectInput for selection
+        selector = SelectInput(self.message, choices, required=True)
+        selected = selector.get_value(param_name, current_value, **context)
+        
+        if selected == "__ADD_NEW__":
+            # User wants to add new city - prompt for city name
+            city_input = questionary.text(
+                f"Enter city name for {country_name}:",
+                validate=lambda text: len(text.strip()) > 0 or "City name cannot be empty"
+            ).ask()
+            
+            if city_input is None:
+                console.print("[yellow]Operation cancelled.[/yellow]")
+                return None
+            
+            city_name = city_input.strip()
+            
+            # Check if city already exists
+            if city_name in cities:
+                console.print(f"[yellow]City '{city_name}' already exists in catalog[/yellow]")
+                return city_name
+            
+            # City not found - offer to add it (variant A)
+            add_confirm = questionary.confirm(
+                f"Add '{city_name}' as a new city for {country_name}?",
+                default=True
+            ).ask()
+            
+            if add_confirm:
+                try:
+                    catalog.add_user_city(country_code, city_name)
+                    console.print(f"[bold green]City '{city_name}' added to catalog[/bold green]")
+                    return city_name
+                except ValueError as e:
+                    console.print(f"[bold red]Error:[/bold red] {e}")
+                    # Ask to try again
+                    if questionary.confirm("Try entering a different city name?", default=True).ask():
+                        return self.get_value(param_name, None, **context)
+                    return None
+            else:
+                # User doesn't want to add - ask to try again
+                if questionary.confirm("Enter a different city name?", default=True).ask():
+                    return self.get_value(param_name, None, **context)
+                return None
+        
+        return selected

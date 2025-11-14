@@ -6,12 +6,14 @@ They handle user input, call services, handle exceptions, and display results.
 """
 
 import typer
+from pathlib import Path
 from dependency_injector.wiring import inject, Provide
 from rich.console import Console
 from src.container import Container
 from src.services.contact_service import ContactService
 from src.utils.validators import validate_birthday
 from src.utils.command_decorators import handle_service_errors, auto_save
+from src.utils.paths import get_storage_path
 
 app = typer.Typer()
 console = Console()
@@ -24,7 +26,7 @@ def _add_birthday_impl(
     name: str,
     birthday: str,
     service: ContactService = Provide[Container.contact_service],
-    filename: str = Provide[Container.config.storage.filename],
+    filename: Path = Provide[Container.config.storage.filename],
 ):
     message = service.add_birthday(name, birthday)
     console.print(f"[bold green]{message}[/bold green]")
@@ -33,11 +35,8 @@ def _add_birthday_impl(
 @app.command(name="add-birthday")
 def add_birthday_command(
     name: str = typer.Argument(..., help="Contact name"),
-    birthday: str = typer.Argument(
-        ...,
-        help="Birthday in DD.MM.YYYY format",
-        callback=validate_birthday,
-    ),
+    birthday: str = typer.Argument(..., help="Birthday in DD.MM.YYYY format", callback=validate_birthday),
+    filename: Path = typer.Option(get_storage_path(), hidden=True),
 ):
     """
     Add a birthday date to a contact.
@@ -46,5 +45,5 @@ def add_birthday_command(
     - Controller: Handles exceptions and coordinates service calls
     - View: Formats and displays results using Rich
     """
-    return _add_birthday_impl(name, birthday)
+    return _add_birthday_impl(name, birthday, filename=filename)
 
