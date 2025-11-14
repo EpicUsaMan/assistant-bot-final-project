@@ -22,6 +22,7 @@ from rich.console import Console
 from rich.panel import Panel
 from src.container import Container
 from src.services.contact_service import ContactService
+from rich.tree import Tree
 
 app = typer.Typer(
     name="assistant-bot",
@@ -60,32 +61,80 @@ def _iter_commands() -> list[tuple[str, str]]:
     result.sort(key=lambda x: x[0])
     return result
 
+def _build_welcome_text() -> Tree:
+    # name -> help_line
+    commands = dict(_iter_commands()) 
 
-def _build_welcome_text() -> str:
-    lines: list[str] = [
-        "[bold green]Welcome to the Assistant Bot![/bold green]\n",
-        "Available commands:",
-    ]
-    for name, help_line in _iter_commands():
-        if help_line:
-            lines.append(f"  • [cyan]{name}[/cyan] - {help_line}")
-        else:
-            lines.append(f"  • [cyan]{name}[/cyan]")
-    lines.append(
-        "\nType [cyan]--help[/cyan] after any command to see details, "
-        "e.g. [cyan]add --help[/cyan]."
-    )
-    return "\n".join(lines)
+    root = Tree("[bold green]Welcome to the Assistant Bot![/]")
+    commands_node = root.add("[bold cyan]Available commands[/]")
 
+    rendered: set[str] = set()
+
+    def add_cmd(parent: Tree, name: str, label: str | None = None) -> None:
+        help_line = commands.get(name)
+        if not help_line:
+            return
+        cmd_label = label or name
+        parent.add(f"[cyan]{cmd_label}[/] — {help_line}")
+        rendered.add(name)
+
+    # 👋 General
+    general = commands_node.add("👋 [bold yellow]General[/]")
+    add_cmd(general, "hello")
+
+    # exit / quit
+    exit_help = commands.get("exit") or commands.get("quit")
+    if exit_help:
+        general.add(f"[cyan]exit or quit[/] — {exit_help}")
+        rendered.update({"exit", "quit"})
+
+    # 📇 Contacts
+    contacts = commands_node.add("📇 [bold yellow]Contacts[/]")
+    for name in ("add", "change", "phone", "all"):
+        add_cmd(contacts, name)
+
+    # 🎂 Birthdays
+    birthdays = commands_node.add("🎂 [bold yellow]Birthdays[/]")
+
+    # special syntax for add-birthday
+    if "add-birthday" in commands:
+        help_line = commands["add-birthday"]
+        birthdays.add(
+            f"[cyan]add-birthday [DD.MM.YYYY][/]"
+            f" — {help_line}"
+        )
+        rendered.add("add-birthday")
+
+    for name in ("show-birthday", "birthdays"):
+        add_cmd(birthdays, name)
+
+    # 🗂 Groups
+    groups = commands_node.add("🗂 [bold yellow]Groups[/]")
+    for name in ("group-add", "group-list", "group-remove",
+                 "group-rename", "group-use"):
+        add_cmd(groups, name)
+
+    # 🏷 Tags
+    tags = commands_node.add("🏷 [bold yellow]Tags[/]")
+    for name in ("tag-add", "tag-clear", "tag-list", "tag-remove"):
+        add_cmd(tags, name)
+
+    # 📝 Notes & Search
+    notes_search = commands_node.add("📝 [bold yellow]Notes & Search[/]")
+    for name in ("notes", "search"):
+        add_cmd(notes_search, name)
+
+    # in case for all others command use Other
+    leftovers = [n for n in commands.keys() if n not in rendered]
+    if leftovers:
+        other = commands_node.add("📦 [bold yellow]Other[/]")
+        for name in sorted(leftovers):
+            add_cmd(other, name)
+
+    return root
 
 def _print_welcome_panel() -> None:
-    console.print(
-        Panel(
-            _build_welcome_text(),
-            title="[bold]Assistant Bot[/bold]",
-            border_style="green",
-        )
-    )
+    console.print(_build_welcome_text())
 
 def auto_register_commands():
     """
@@ -200,23 +249,7 @@ def run_interactive():
     _print_welcome_panel()
 
     ctx = Context(typer.main.get_command(app))
-    
-    console.print(Panel(
-        "[bold green]Welcome to the Assistant Bot![/bold green]\n\n"
-        "Available commands:\n"
-        "  • [cyan]hello[/cyan] - Get a greeting\n"
-        "  • [cyan]add[/cyan] [name] [phone] - Add a contact\n"
-        "  • [cyan]change[/cyan] [name] [old_phone] [new_phone] - Change phone number\n"
-        "  • [cyan]delete[/cyan] [name] - Delete a contact\n"
-        "  • [cyan]phone[/cyan] [name] - Show phone numbers\n"
-        "  • [cyan]all[/cyan] - Show all contacts\n"
-        "  • [cyan]add-birthday[/cyan] [name] [DD.MM.YYYY] - Add birthday\n"
-        "  • [cyan]show-birthday[/cyan] [name] - Show birthday\n"
-        "  • [cyan]birthdays[/cyan] - Show upcoming birthdays\n"
-        "  • [cyan]exit[/cyan] or [cyan]quit[/cyan] - Exit the program\n",
-        title="[bold]Assistant Bot[/bold]",
-        border_style="green"
-    ))
+
     # Create context-aware completer that fixes parameter positioning
     custom_completer = create_context_aware_completer_for_repl(ctx)
     
