@@ -118,11 +118,12 @@ class ContactService:
     
     def delete_contact(self, name: str) -> str:
         """Delete a contact from the address book."""
-        if name not in self.address_book.data:
+        # Use AddressBook.delete() which handles the group_id:name key format
+        try:
+            self.address_book.delete(name)
+            return f"Contact '{name}' deleted successfully"
+        except KeyError:
             raise ValueError(f"Contact '{name}' not found")
-        
-        del self.address_book.data[name]
-        return f"Contact '{name}' deleted successfully"
 
 
     def change_contact(self, name: str, old_phone: str, new_phone: str) -> str:

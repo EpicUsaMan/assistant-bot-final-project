@@ -189,7 +189,11 @@ def interactive():
     try:
         repl(ctx, prompt_kwargs=prompt_kwargs)
     except (EOFError, KeyboardInterrupt):
-        container.save_data()
+        # Save data directly via address_book instead of container.save_data()
+        # This works even when container is wrapped as DynamicContainer after wiring
+        book = container.address_book()
+        filename = container.config.storage.filename()
+        book.save_to_file(filename)
         console.print("\n[bold green]Good bye![/bold green]")
 
 
