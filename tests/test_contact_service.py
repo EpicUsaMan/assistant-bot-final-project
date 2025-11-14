@@ -4,6 +4,11 @@ Tests for ContactService.
 This module contains comprehensive tests for all contact service operations.
 """
 
+import sys
+import os
+# Ensure the project root is on sys.path so `src.*` imports work when running tests
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import pytest
 from datetime import datetime, timedelta
 from src.models.address_book import AddressBook
@@ -81,6 +86,39 @@ class TestAddContact:
         with pytest.raises(ValueError):
             contact_service.add_contact("Bob", "invalid")
 
+
+class TestDeleteContact:
+    """Tests for delete_contact method."""
+
+    def test_delete_contact(self, populated_service):
+        """Test deleting a contact."""
+        result = populated_service.delete_contact("John")
+        # Accept different reasonable return types/values from delete_contact:
+        # - a confirmation string containing "deleted"
+        # - a truthy value (e.g. True)
+        # - None is not accepted because deletion should indicate success
+        assert result is not None
+        if isinstance(result, str):
+            assert "deleted" in result.lower()
+        else:
+            assert bool(result) is True
+        assert populated_service.address_book.find("John") is None
+
+    def test_delete_non_existent_contact(self, contact_service):
+        """Test deleting a non-existent contact."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.delete_contact("NonExistent")
+
+    def test_delete_contact_with_phones(self, populated_service):
+        """Test deleting a contact with phone numbers."""
+        result = populated_service.delete_contact("John")
+        assert result is not None
+        if isinstance(result, str):
+            assert "deleted" in result.lower()
+        else:
+            assert bool(result) is True
+        assert populated_service.address_book.find("John") is None
+           
 
 class TestChangeContact:
     """Tests for change_contact method."""
@@ -421,6 +459,7 @@ class TestGroupsService:
         # group 'other' should also be registered in address book
         assert contact_service.address_book.has_group("other")
 
+
 class TestGroupsFiltering:
     """Tests for group-based filtering in list_contacts/get_all_contacts."""
 
@@ -482,6 +521,7 @@ class TestGroupsFiltering:
     def test_list_contacts_unknown_group_raises(self, contact_service):
         with pytest.raises(ValueError, match="Group 'unknown' not found"):
             contact_service.list_contacts(group="unknown")
+
 
 class TestGroupsIsolation:
     """Tests that contacts with the same name are isolated per group."""
@@ -551,7 +591,7 @@ class TestGroupsIsolation:
         svc.add_tag("John", "colleague")
         assert svc.list_tags("John") == ["colleague"]
 
-        # back to personal: tags должны остаться только свои
+        # back to personal: tags must remain isolated
         svc.set_current_group("personal")
         assert svc.list_tags("John") == ["friends"]
 
@@ -578,10 +618,12 @@ class TestGroupsIsolation:
         svc.set_current_group("work")
         assert svc.list_tags("John") == []
 
+
 class TestGroupsServiceAPI:
     """Tests for ContactService group management wrappers."""
 
     def test_rename_group_message_and_delegation(self, contact_service):
+        """Test renaming a group updates all references."""
         # setup: add group and records
         contact_service.add_group("friends")
         contact_service.add_contact("John", "1111111111", group_id="friends")
@@ -600,14 +642,470 @@ class TestGroupsServiceAPI:
         assert found.group_id == "buddies"
 
     def test_remove_group_force_removes_contacts(self, contact_service):
+        """Test removing a group with force flag removes all contacts."""
         contact_service.add_group("work")
         contact_service.add_contact("John", "1111111111", group_id="work")
 
         msg = contact_service.remove_group("work", force=True)
         assert "work" in msg
+        assert "contacts removed" in msg
 
         ab = contact_service.address_book
         assert not ab.has_group("work")
         # no contacts in work group
         for key in ab.data.keys():
             assert not key.startswith("work:")
+    
+    def test_remove_group_without_force(self, contact_service):
+        """Test removing an empty group without force flag."""
+        contact_service.add_group("empty_group")
+        
+        msg = contact_service.remove_group("empty_group", force=False)
+        assert "empty_group" in msg
+        assert "removed" in msg
+        
+        ab = contact_service.address_book
+        assert not ab.has_group("empty_group")
+    
+    def test_get_all_contacts_with_tags_in_grouped_view(self, contact_service):
+        """Test that get_all_contacts with group='all' shows tags correctly."""
+        contact_service.add_group("work")
+        contact_service.add_contact("Alice", "1111111111", group_id="personal")
+        contact_service.add_tag("Alice", "friend")
+        
+        # Switch to work group to add tags to Bob
+        contact_service.set_current_group("work")
+        contact_service.add_contact("Bob", "2222222222", group_id="work")
+        contact_service.add_tag("Bob", "colleague")
+        
+        out = contact_service.get_all_contacts(group="all")
+        
+        # Check that tags are displayed
+        assert "friend" in out
+        assert "colleague" in out
+    
+    def test_get_all_contacts_skips_empty_groups(self, contact_service):
+        """Test that get_all_contacts with group='all' skips empty groups."""
+        contact_service.add_group("empty_work")
+        contact_service.add_group("friends")
+        contact_service.add_contact("Alice", "1111111111", group_id="friends")
+        
+        out = contact_service.get_all_contacts(group="all")
+        
+        # empty_work group should not appear in output
+        assert "empty_work" not in out
+        # friends group should appear
+        assert "friends" in out or "Alice" in out
+    
+    def test_get_all_contacts_with_all_groups_empty(self, contact_service):
+        """Test that get_all_contacts with group='all' returns empty message when no contacts."""
+        contact_service.add_group("work")
+        contact_service.add_group("friends")
+        
+        out = contact_service.get_all_contacts(group="all")
+        
+        # Should return empty message since all groups are empty
+        assert "Address book is empty" in out
+
+
+class TestTagManagement:
+    """Tests for tag management methods."""
+    
+    def test_add_tag_to_contact(self, populated_service):
+        """Test adding a tag to a contact."""
+        result = populated_service.add_tag("John", "work")
+        assert "added" in result.lower()
+        tags = populated_service.list_tags("John")
+        assert "work" in tags
+    
+    def test_add_tag_normalizes_to_lowercase(self, populated_service):
+        """Test tags are normalized to lowercase."""
+        populated_service.add_tag("John", "Work")
+        tags = populated_service.list_tags("John")
+        assert "work" in tags
+        assert "Work" not in tags
+    
+    def test_add_tag_to_non_existent_contact(self, contact_service):
+        """Test adding tag to non-existent contact raises error."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.add_tag("NonExistent", "work")
+    
+    def test_remove_tag_from_contact(self, populated_service):
+        """Test removing a tag from a contact."""
+        populated_service.add_tag("John", "work")
+        populated_service.add_tag("John", "important")
+        
+        result = populated_service.remove_tag("John", "work")
+        assert "removed" in result.lower()
+        tags = populated_service.list_tags("John")
+        assert "work" not in tags
+        assert "important" in tags
+    
+    def test_remove_tag_normalizes(self, populated_service):
+        """Test remove_tag normalizes tag names."""
+        populated_service.add_tag("John", "work")
+        populated_service.remove_tag("John", "Work")  # Uppercase
+        tags = populated_service.list_tags("John")
+        assert "work" not in tags
+    
+    def test_remove_tag_from_non_existent_contact(self, contact_service):
+        """Test removing tag from non-existent contact raises error."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.remove_tag("NonExistent", "work")
+    
+    def test_clear_tags_from_contact(self, populated_service):
+        """Test clearing all tags from a contact."""
+        populated_service.add_tag("John", "work")
+        populated_service.add_tag("John", "important")
+        
+        result = populated_service.clear_tags("John")
+        assert "cleared" in result.lower()
+        tags = populated_service.list_tags("John")
+        assert tags == []
+    
+    def test_clear_tags_from_non_existent_contact(self, contact_service):
+        """Test clearing tags from non-existent contact raises error."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.clear_tags("NonExistent")
+    
+    def test_list_tags_for_contact(self, populated_service):
+        """Test listing all tags for a contact."""
+        populated_service.add_tag("John", "work")
+        populated_service.add_tag("John", "important")
+        populated_service.add_tag("John", "urgent")
+        
+        tags = populated_service.list_tags("John")
+        assert len(tags) == 3
+        assert "work" in tags
+        assert "important" in tags
+        assert "urgent" in tags
+    
+    def test_list_tags_for_contact_without_tags(self, populated_service):
+        """Test listing tags for contact without tags."""
+        tags = populated_service.list_tags("John")
+        assert tags == []
+    
+    def test_list_tags_for_non_existent_contact(self, contact_service):
+        """Test listing tags for non-existent contact raises error."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.list_tags("NonExistent")
+    
+    def test_add_invalid_tag_raises_error(self, populated_service):
+        """Test adding invalid tag raises error."""
+        with pytest.raises(ValueError, match="Invalid tag"):
+            populated_service.add_tag("John", "")
+    
+    def test_add_tag_with_special_characters_invalid(self, populated_service):
+        """Test adding tag with invalid special characters raises error."""
+        with pytest.raises(ValueError, match="Invalid tag"):
+            populated_service.add_tag("John", "tag@#$")
+
+
+class TestTagSearch:
+    """Tests for tag search methods."""
+    
+    def test_find_by_tags_all_with_list(self, sorting_service):
+        """Test finding contacts with all specified tags (list input)."""
+        # Pavlo has ['ml', 'ai'], Anna has ['ai']
+        results = sorting_service.find_by_tags_all(["ml", "ai"])
+        assert len(results) == 1
+        # Names include group prefix
+        assert "Pavlo" in results[0][0]
+    
+    def test_find_by_tags_all_with_string(self, sorting_service):
+        """Test finding contacts with all specified tags (string input)."""
+        results = sorting_service.find_by_tags_all("ml,ai")
+        assert len(results) == 1
+        # Names include group prefix
+        assert "Pavlo" in results[0][0]
+    
+    def test_find_by_tags_all_no_matches(self, sorting_service):
+        """Test finding contacts when no one has all tags."""
+        results = sorting_service.find_by_tags_all(["ml", "nonexistent"])
+        assert results == []
+    
+    def test_find_by_tags_all_empty_tags(self, sorting_service):
+        """Test finding contacts with empty tag list."""
+        results = sorting_service.find_by_tags_all([])
+        assert results == []
+    
+    def test_find_by_tags_all_single_tag(self, sorting_service):
+        """Test finding contacts with single tag."""
+        results = sorting_service.find_by_tags_all(["ai"])
+        assert len(results) == 2  # Both Pavlo and Anna have 'ai'
+        # Names include group prefix, check if contact name is in result
+        names_str = str([name for name, _ in results])
+        assert "Pavlo" in names_str
+        assert "Anna" in names_str
+    
+    def test_find_by_tags_any_with_list(self, sorting_service):
+        """Test finding contacts with any of specified tags (list input)."""
+        results = sorting_service.find_by_tags_any(["ml", "ai"])
+        assert len(results) == 2  # Both have at least one tag
+        # Names include group prefix, check if contact name is in result
+        names_str = str([name for name, _ in results])
+        assert "Pavlo" in names_str
+        assert "Anna" in names_str
+    
+    def test_find_by_tags_any_with_string(self, sorting_service):
+        """Test finding contacts with any of specified tags (string input)."""
+        results = sorting_service.find_by_tags_any("ml,ai")
+        assert len(results) == 2
+    
+    def test_find_by_tags_any_no_matches(self, sorting_service):
+        """Test finding contacts when no one has any of the tags."""
+        results = sorting_service.find_by_tags_any(["nonexistent", "alsononexistent"])
+        assert results == []
+    
+    def test_find_by_tags_any_empty_tags(self, sorting_service):
+        """Test finding contacts with empty tag list."""
+        results = sorting_service.find_by_tags_any([])
+        assert results == []
+    
+    def test_find_by_tags_any_single_tag(self, sorting_service):
+        """Test finding contacts with single tag."""
+        results = sorting_service.find_by_tags_any(["ml"])
+        assert len(results) == 1
+        # Names include group prefix
+        assert "Pavlo" in results[0][0]
+    
+    def test_prepare_tags_with_invalid_tag(self, contact_service):
+        """Test _prepare_tags with invalid tag."""
+        with pytest.raises(ValueError, match="Invalid tag"):
+            contact_service._prepare_tags(["valid", ""])
+    
+    def test_prepare_tags_with_string_input(self, contact_service):
+        """Test _prepare_tags with comma-separated string."""
+        result = contact_service._prepare_tags("work,important")
+        assert result == ["work", "important"]
+    
+    def test_prepare_tags_with_whitespace(self, contact_service):
+        """Test _prepare_tags handles whitespace correctly."""
+        result = contact_service._prepare_tags(" work , important ")
+        assert result == ["work", "important"]
+
+
+class TestIterNameRecord:
+    """Tests for _iter_name_record helper method."""
+    
+    def test_iter_name_record_normal(self, populated_service):
+        """Test iterating over name-record pairs."""
+        items = list(populated_service._iter_name_record())
+        assert len(items) == 1
+        # Names include group prefix
+        assert "John" in items[0][0]
+    
+    def test_iter_name_record_with_broken_addressbook(self, contact_service):
+        """Test _iter_name_record with broken address book structure."""
+        # Replace address_book.data with something that's not a dict
+        contact_service.address_book.data = "not_a_dict"
+        
+        with pytest.raises(RuntimeError, match="not recognized"):
+            list(contact_service._iter_name_record())
+
+
+class TestCalculateUpcomingBirthdays:
+    """Tests for _calculate_upcoming_birthdays method."""
+    
+    def test_calculate_with_contact_without_birthday(self, sorting_service):
+        """Test calculation includes contacts without birthdays gracefully."""
+        # Illia has no birthday, should be skipped
+        results = sorting_service._calculate_upcoming_birthdays(days=365)
+        # Should not crash, just skip Illia
+        names = [r["name"] for r in results]
+        assert "Illia" not in names
+    
+    def test_calculate_upcoming_birthdays_weekend_adjustment(self):
+        """Test that weekend birthdays are adjusted to Monday."""
+        book = AddressBook()
+        record = Record("Weekend")
+        
+        # Find a Saturday birthday in the near future
+        today = datetime.today().date()
+        days_ahead = (5 - today.weekday()) % 7  # Days until next Saturday
+        if days_ahead == 0:
+            days_ahead = 7  # If today is Saturday, use next Saturday
+        
+        saturday = today + timedelta(days=days_ahead)
+        birthday_str = saturday.strftime("%d.%m") + ".1990"
+        record.add_birthday(birthday_str)
+        book.add_record(record)
+        
+        service = ContactService(book)
+        results = service._calculate_upcoming_birthdays(days=14)
+        
+        if results:  # Only test if birthday is in range
+            # Congratulation date should be Monday (2 days after Saturday)
+            congrat_date_str = results[0]["congratulation_date"]
+            congrat_date = datetime.strptime(congrat_date_str, "%d.%m.%Y").date()
+            assert congrat_date.weekday() == 0  # Monday
+
+
+class TestEmailManagement:
+    """Tests for email management methods."""
+    
+    def test_add_email(self, contact_service):
+        """Test adding an email to a contact."""
+        contact_service.add_contact("Alice", "1234567890")
+        result = contact_service.add_email("Alice", "alice@example.com")
+        assert "added" in result.lower()
+        record = contact_service.address_book.find("Alice")
+        assert record.email is not None
+        assert record.email.value == "alice@example.com"
+    
+    def test_add_email_normalizes_to_lowercase(self, contact_service):
+        """Test that email is normalized to lowercase."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.add_email("Alice", "ALICE@EXAMPLE.COM")
+        record = contact_service.address_book.find("Alice")
+        assert record.email.value == "alice@example.com"
+    
+    def test_add_email_updates_existing(self, contact_service):
+        """Test that adding email updates existing email."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.add_email("Alice", "alice@example.com")
+        contact_service.add_email("Alice", "alice.new@example.com")
+        record = contact_service.address_book.find("Alice")
+        assert record.email.value == "alice.new@example.com"
+    
+    def test_add_email_contact_not_found(self, contact_service):
+        """Test adding email to non-existent contact raises error."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.add_email("NonExistent", "test@example.com")
+    
+    def test_add_email_invalid_format(self, contact_service):
+        """Test adding invalid email format raises error."""
+        contact_service.add_contact("Alice", "1234567890")
+        with pytest.raises(ValueError):
+            contact_service.add_email("Alice", "invalid-email")
+    
+    def test_remove_email(self, contact_service):
+        """Test removing email from a contact."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.add_email("Alice", "alice@example.com")
+        result = contact_service.remove_email("Alice")
+        assert "removed" in result.lower()
+        record = contact_service.address_book.find("Alice")
+        assert record.email is None
+    
+    def test_remove_email_contact_not_found(self, contact_service):
+        """Test removing email from non-existent contact raises error."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.remove_email("NonExistent")
+    
+    def test_remove_email_not_set(self, contact_service):
+        """Test removing email when not set returns appropriate message."""
+        contact_service.add_contact("Alice", "1234567890")
+        result = contact_service.remove_email("Alice")
+        assert "No email set" in result
+
+
+class TestAddressManagement:
+    """Tests for address management methods."""
+    
+    def test_set_address(self, contact_service):
+        """Test setting an address for a contact."""
+        contact_service.add_contact("Alice", "1234567890")
+        result = contact_service.set_address("Alice", "UA", "Kyiv", "Main St 1")
+        assert "set" in result.lower()
+        record = contact_service.address_book.find("Alice")
+        assert record.address is not None
+        assert record.address.country == "UA"
+        assert record.address.city == "Kyiv"
+        assert record.address.address_line == "Main St 1"
+    
+    def test_set_address_updates_existing(self, contact_service):
+        """Test that setting address updates existing address."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.set_address("Alice", "UA", "Kyiv", "Main St 1")
+        contact_service.set_address("Alice", "PL", "Warsaw", "New St 2")
+        record = contact_service.address_book.find("Alice")
+        assert record.address.country == "PL"
+        assert record.address.city == "Warsaw"
+        assert record.address.address_line == "New St 2"
+    
+    def test_set_address_strips_whitespace(self, contact_service):
+        """Test that setting address strips whitespace."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.set_address("Alice", "  UA  ", "  Kyiv  ", "  Main St 1  ")
+        record = contact_service.address_book.find("Alice")
+        assert record.address.country == "UA"
+        assert record.address.city == "Kyiv"
+        assert record.address.address_line == "Main St 1"
+    
+    def test_set_address_contact_not_found(self, contact_service):
+        """Test setting address for non-existent contact raises error."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.set_address("NonExistent", "UA", "Kyiv", "Main St 1")
+    
+    def test_remove_address(self, contact_service):
+        """Test removing address from a contact."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.set_address("Alice", "UA", "Kyiv", "Main St 1")
+        result = contact_service.remove_address("Alice")
+        assert "removed" in result.lower()
+        record = contact_service.address_book.find("Alice")
+        assert record.address is None
+    
+    def test_remove_address_contact_not_found(self, contact_service):
+        """Test removing address from non-existent contact raises error."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.remove_address("NonExistent")
+    
+    def test_remove_address_not_set(self, contact_service):
+        """Test removing address when not set returns appropriate message."""
+        contact_service.add_contact("Alice", "1234567890")
+        result = contact_service.remove_address("Alice")
+        assert "No address set" in result
+    
+    def test_remove_address_empty_address(self, contact_service):
+        """Test removing empty address returns appropriate message."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.set_address("Alice", "", "", "")
+        result = contact_service.remove_address("Alice")
+        assert "No address set" in result
+
+
+class TestGetAllContactsWithEmailAndAddress:
+    """Tests for get_all_contacts displaying email and address."""
+    
+    def test_get_all_contacts_includes_email(self, contact_service):
+        """Test that get_all_contacts includes email in output."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.add_email("Alice", "alice@example.com")
+        result = contact_service.get_all_contacts()
+        assert "alice@example.com" in result
+    
+    def test_get_all_contacts_includes_address(self, contact_service):
+        """Test that get_all_contacts includes address in output."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.set_address("Alice", "UA", "Kyiv", "Main St 1")
+        result = contact_service.get_all_contacts()
+        assert "Main St 1, Kyiv, UA" in result
+    
+    def test_get_all_contacts_includes_email_and_address(self, contact_service):
+        """Test that get_all_contacts includes both email and address."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.add_email("Alice", "alice@example.com")
+        contact_service.set_address("Alice", "UA", "Kyiv", "Main St 1")
+        result = contact_service.get_all_contacts()
+        assert "alice@example.com" in result
+        assert "Main St 1, Kyiv, UA" in result
+    
+    def test_get_all_contacts_grouped_includes_email_and_address(self, contact_service):
+        """Test that get_all_contacts with group='all' includes email and address."""
+        contact_service.add_group("work")
+        contact_service.add_contact("Alice", "1111111111", group_id="personal")
+        contact_service.add_email("Alice", "alice@example.com")
+        contact_service.set_address("Alice", "UA", "Kyiv", "Main St 1")
+        
+        contact_service.set_current_group("work")
+        contact_service.add_contact("Bob", "2222222222", group_id="work")
+        contact_service.add_email("Bob", "bob@example.com")
+        contact_service.set_address("Bob", "PL", "Warsaw", "New St 2")
+        
+        result = contact_service.get_all_contacts(group="all")
+        assert "alice@example.com" in result
+        assert "Main St 1, Kyiv, UA" in result
+        assert "bob@example.com" in result
+        assert "New St 2, Warsaw, PL" in result

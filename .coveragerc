@@ -6,6 +6,7 @@ source =
     src/services
     src/container.py
     src/main.py
+    src/utils
 
 # Omit test files and third-party libraries
 omit =
@@ -15,6 +16,8 @@ omit =
     */venv/*
     */site-packages/*
     */.venv/*
+    *.pyx
+    */dependency_injector/*
 
 [report]
 # Show missing lines in the report

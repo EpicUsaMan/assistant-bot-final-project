@@ -5,7 +5,10 @@ This service provides business logic for contact operations with proper
 separation of concerns and dependency injection support.
 """
 
+from os import name
+from typing import Optional, List, Dict
 from datetime import datetime, timedelta
+from enum import Enum
 from typing import Dict, Iterable, List, Optional, Tuple, Any, Callable
 
 from src.models.address_book import AddressBook
@@ -13,24 +16,25 @@ from src.models.record import Record
 from src.models.tags import Tags
 from src.models.group import Group, DEFAULT_GROUP_ID, normalize_group_id
 from src.utils.validators import is_valid_tag, normalize_tag, split_tags_string
-from enum import Enum
 
-#--- Contact sorting options ---
+
 class ContactSortBy(str, Enum):
-    '''
-        Enum for contact sorting criteria.
-        Attributes:
-            NAME: Sort by contact name
-            PHONE: Sort by phone number
-            BIRTHDAY: Sort by birthday date
-            TAG_COUNT: Sort by number of tags
-            TAG_NAME: Sort by tag names
-    '''
+    """
+    Enum for contact sorting criteria.
+    
+    Attributes:
+        NAME: Sort by contact name
+        PHONE: Sort by phone number
+        BIRTHDAY: Sort by birthday date
+        TAG_COUNT: Sort by number of tags
+        TAG_NAME: Sort by tag names
+    """
     NAME = "name"
     PHONE = "phone"
     BIRTHDAY = "birthday"    
     TAG_COUNT = "tag_count"
     TAG_NAME = "tag_name"
+
 
 class ContactService:
     """
@@ -111,6 +115,15 @@ class ContactService:
         if phone:
             record.add_phone(phone)
         return message
+    
+    def delete_contact(self, name: str) -> str:
+        """Delete a contact from the address book."""
+        if name not in self.address_book.data:
+            raise ValueError(f"Contact '{name}' not found")
+        
+        del self.address_book.data[name]
+        return f"Contact '{name}' deleted successfully"
+
 
     def change_contact(self, name: str, old_phone: str, new_phone: str) -> str:
         """
@@ -183,6 +196,10 @@ class ContactService:
                 line = f"Contact name: {name}, phones: {phones}"
                 if tags:
                     line += f", tags: {tags}"
+                if rec.email:
+                    line += f", email: {rec.email.value}"
+                if rec.address and not rec.address.is_empty():
+                    line += f", address: {rec.address}"
                 lines.append(line)
             return "\n\n".join(lines)
 
@@ -205,6 +222,10 @@ class ContactService:
                 line = f"  Contact name: {name}, phones: {phones}"
                 if tags:
                     line += f", tags: {tags}"
+                if rec.email:
+                    line += f", email: {rec.email.value}"
+                if rec.address and not rec.address.is_empty():
+                    line += f", address: {rec.address}"
                 all_lines.append(line)
 
             # separator
@@ -334,12 +355,13 @@ class ContactService:
 
     def has_contacts(self) -> bool:
         """
-        Check if address book has any contacts.
+        Check if address book has any contacts in the current group.
 
         Returns:
-            True if address book has contacts, False otherwise
+            True if current group has contacts, False otherwise
         """
-        return len(self.address_book.data) > 0
+        # Use list_contacts to ensure consistency with group filtering
+        return len(self.list_contacts()) > 0
 
     def list_contacts(
             self, 
@@ -381,11 +403,16 @@ class ContactService:
     def add_tag(self, name: str, tag: str) -> str:
         """
         Add a tag to a contact.
+        
         Args:
             name: Contact name
             tag: Tag to add
+            
         Returns:
             Success message
+            
+        Raises:
+            ValueError: If contact not found or tag invalid
         """
         record = self.address_book.find(name)
         if record is None:
@@ -401,9 +428,16 @@ class ContactService:
     def remove_tag(self, name: str, tag: str) -> str:
         """
         Remove a tag from a contact.
+        
         Args:
             name: Contact name
             tag: Tag to remove
+            
+        Returns:
+            Success message
+            
+        Raises:
+            ValueError: If contact not found
         """
         record = self.address_book.find(name)
         if record is None:
@@ -416,8 +450,15 @@ class ContactService:
     def clear_tags(self, name: str) -> str:
         """
         Clear all tags from a contact.
+        
         Args:
             name: Contact name
+            
+        Returns:
+            Success message
+            
+        Raises:
+            ValueError: If contact not found
         """
         record = self.address_book.find(name)
         if record is None:
@@ -429,8 +470,15 @@ class ContactService:
     def list_tags(self, name: str) -> list[str]:
         """
         List all tags for a contact.
+        
         Args:
             name: Contact name
+            
+        Returns:
+            List of tag strings
+            
+        Raises:
+            ValueError: If contact not found
         """
         record = self.address_book.find(name)
         if record is None:
@@ -439,12 +487,30 @@ class ContactService:
 
     # --- helpers ---
     def _iter_name_record(self) -> Iterable[Tuple[str, "Record"]]:
+        """
+        Iterate over all contact name-record pairs.
+        
+        Returns:
+            Iterator of (name, record) tuples
+        """
         book = self.address_book
         if hasattr(book, "data") and isinstance(book.data, dict):
             return book.data.items()
         raise RuntimeError("AddressBook storage not recognized")
 
     def _prepare_tags(self, tags: List[str] | str) -> List[str]:
+        """
+        Prepare and validate tags.
+        
+        Args:
+            tags: List of tags or comma-separated string
+            
+        Returns:
+            List of normalized tag strings
+            
+        Raises:
+            ValueError: If any tag is invalid
+        """
         if isinstance(tags, str):
             tags = split_tags_string(tags)
         out = []
@@ -458,7 +524,13 @@ class ContactService:
     # --- search by tags ---
     def find_by_tags_all(self, tags: List[str] | str) -> List[Tuple[str, "Record"]]:
         """
-        returns contacts that have *all* specified tags (AND).
+        Find contacts that have all specified tags (AND logic).
+        
+        Args:
+            tags: List of tags or comma-separated string
+            
+        Returns:
+            List of (name, record) tuples with all specified tags
         """
         want = set(self._prepare_tags(tags))
         if not want:
@@ -472,7 +544,13 @@ class ContactService:
 
     def find_by_tags_any(self, tags: List[str] | str) -> List[Tuple[str, "Record"]]:
         """
-        returns contacts that have *at least one* of the specified tags (OR).
+        Find contacts that have at least one of the specified tags (OR logic).
+        
+        Args:
+            tags: List of tags or comma-separated string
+            
+        Returns:
+            List of (name, record) tuples with at least one specified tag
         """
         want = set(self._prepare_tags(tags))
         if not want:
@@ -536,4 +614,96 @@ class ContactService:
         self.address_book.remove_group(group_id, force=force)
         if force:
             return f"Group '{group_id}' and its contacts removed."
-        return f"Group '{group_id}' removed."        
+        return f"Group '{group_id}' removed."
+    
+    # --- Email management ---
+    def add_email(self, name: str, email: str) -> str:
+        """
+        Add or update email address for a contact.
+        
+        Args:
+            name: Contact name
+            email: Email address
+            
+        Returns:
+            Success message
+            
+        Raises:
+            ValueError: If contact not found or email invalid
+        """
+        record = self.address_book.find(name)
+        if record is None:
+            raise ValueError(f"Contact '{name}' not found.")
+        record.add_email(email)
+        return f"Email added to {name}."
+    
+    def remove_email(self, name: str) -> str:
+        """
+        Remove email address from a contact.
+        
+        Args:
+            name: Contact name
+            
+        Returns:
+            Success message
+            
+        Raises:
+            ValueError: If contact not found
+        """
+        record = self.address_book.find(name)
+        if record is None:
+            raise ValueError(f"Contact '{name}' not found.")
+        if record.email is None:
+            return f"No email set for contact '{name}'."
+        record.remove_email()
+        return f"Email removed from {name}."
+    
+    # --- Address management ---
+    def set_address(
+        self,
+        name: str,
+        country: str,
+        city: str,
+        address_line: str,
+    ) -> str:
+        """
+        Set address for a contact.
+        
+        Args:
+            name: Contact name
+            country: Country code (e.g., "UA", "PL")
+            city: City name
+            address_line: Street address
+            
+        Returns:
+            Success message
+            
+        Raises:
+            ValueError: If contact not found
+        """
+        record = self.address_book.find(name)
+        if record is None:
+            raise ValueError(f"Contact '{name}' not found.")
+        record.set_address(country, city, address_line)
+        return f"Address set for {name}."
+    
+    def remove_address(self, name: str) -> str:
+        """
+        Remove address from a contact.
+        
+        Args:
+            name: Contact name
+            
+        Returns:
+            Success message
+            
+        Raises:
+            ValueError: If contact not found
+        """
+        record = self.address_book.find(name)
+        if record is None:
+            raise ValueError(f"Contact '{name}' not found.")
+        if record.address is None or record.address.is_empty():
+            return f"No address set for contact '{name}'."
+        record.remove_address()
+        return f"Address removed from {name}."        

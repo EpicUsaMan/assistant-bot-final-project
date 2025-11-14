@@ -8,6 +8,9 @@ following the Model-View-Controller-Service (MVCS) pattern.
 from dependency_injector import containers, providers
 from src.models.address_book import AddressBook
 from src.services.contact_service import ContactService
+from src.services.note_service import NoteService
+from src.services.search_service import SearchService
+from src.utils.progressive_params import ContactSelector, NoteSelector, TagSelector, TextInput, EmailInput, ConfirmInput, TagsInput, SelectInput, CountrySelector, CitySelector
 
 
 class Container(containers.DeclarativeContainer):
@@ -16,7 +19,7 @@ class Container(containers.DeclarativeContainer):
     
     Dependency hierarchy:
     - Model: AddressBook (handles data and serialization)
-    - Service: ContactService (business logic)
+    - Services: ContactService, NoteService, SearchService (business logic)
     - Command: CLI commands (Controller + View - handle coordination and presentation)
     
     Commands ARE controllers in this architecture. They:
@@ -27,7 +30,9 @@ class Container(containers.DeclarativeContainer):
     
     This container manages all application dependencies:
     - Address book model instance (handles its own persistence)
-    - Contact service for business logic
+    - Contact service for contact-related business logic
+    - Note service for note-related business logic
+    - Search service for search-related business logic
     """
     
     config = providers.Configuration()
@@ -43,6 +48,62 @@ class Container(containers.DeclarativeContainer):
     contact_service = providers.Factory(
         ContactService,
         address_book=address_book
+    )
+    
+    # Note service (factory - note management business logic)
+    note_service = providers.Factory(
+        NoteService,
+        address_book=address_book
+    )
+    
+    # Search service (factory - search business logic)
+    search_service = providers.Factory(
+        SearchService,
+        address_book=address_book
+    )
+    
+    # Progressive parameter providers (utility layer)
+    contact_selector_factory = providers.Factory(
+        ContactSelector,
+        service=note_service
+    )
+    
+    note_selector_factory = providers.Factory(
+        NoteSelector,
+        service=note_service
+    )
+    
+    tag_selector_factory = providers.Factory(
+        TagSelector,
+        service=note_service
+    )
+    
+    text_input_factory = providers.Factory(
+        TextInput
+    )
+    
+    email_input_factory = providers.Factory(
+        EmailInput
+    )
+    
+    confirm_input_factory = providers.Factory(
+        ConfirmInput
+    )
+    
+    tags_input_factory = providers.Factory(
+        TagsInput
+    )
+    
+    select_input_factory = providers.Factory(
+        SelectInput
+    )
+    
+    country_selector_factory = providers.Factory(
+        CountrySelector
+    )
+    
+    city_selector_factory = providers.Factory(
+        CitySelector
     )
     
     def save_data(self) -> None:

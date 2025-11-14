@@ -6,12 +6,14 @@ They handle user input, call services, handle exceptions, and display results.
 """
 
 import typer
+from pathlib import Path
 from dependency_injector.wiring import inject, Provide
 from rich.console import Console
 from src.container import Container
 from src.services.contact_service import ContactService
 from src.utils.validators import validate_phone
 from src.utils.command_decorators import handle_service_errors, auto_save
+from src.utils.paths import get_storage_path
 
 app = typer.Typer()
 console = Console()
@@ -24,7 +26,7 @@ def _add_impl(
     name: str,
     phone: str,
     service: ContactService = Provide[Container.contact_service],
-    filename: str = Provide[Container.config.storage.filename],
+    filename: Path = Provide[Container.config.storage.filename],
 ):
     message = service.add_contact(name, phone)
     console.print(f"[bold green]{message}[/bold green]")
@@ -38,6 +40,7 @@ def add_command(
         help="Phone number (10 digits)",
         callback=validate_phone,
     ),
+    filename: Path = typer.Option(get_storage_path(), hidden=True)
 ):
     """
     Add a new contact with a phone number or add a phone to an existing contact.
@@ -46,5 +49,5 @@ def add_command(
     - Controller: Handles exceptions and coordinates service calls
     - View: Formats and displays results using Rich
     """
-    return _add_impl(name, phone)
+    return _add_impl(name, phone, filename=filename)
 

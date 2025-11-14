@@ -8,16 +8,24 @@ runner = CliRunner()
 def test_all_sort_by_tags():
     auto_register_commands()
     with runner.isolated_filesystem():
-        runner.invoke(app, ["add", "Pavlo", "1234567890"])
-        runner.invoke(app, ["add", "Anna", "1111111111"])
-        runner.invoke(app, ["tag-add", "Pavlo", "ml"])
-        runner.invoke(app, ["tag-add", "Pavlo", "ai"])
-        runner.invoke(app, ["tag-add", "Anna", "ai"])
+        r1 = runner.invoke(app, ["add", "Pavlo", "1234567890"])
+        assert r1.exit_code == 0, f"Add Pavlo failed: {r1.stdout}"
+        r2 = runner.invoke(app, ["add", "Anna", "9876543210"])
+        assert r2.exit_code == 0, f"Add Anna failed: {r2.stdout}"
+        r3 = runner.invoke(app, ["tag-add", "Pavlo", "ml"])
+        assert r3.exit_code == 0, f"Tag-add Pavlo ml failed: {r3.stdout}"
+        r4 = runner.invoke(app, ["tag-add", "Pavlo", "ai"])
+        assert r4.exit_code == 0, f"Tag-add Pavlo ai failed: {r4.stdout}"
+        r5 = runner.invoke(app, ["tag-add", "Anna", "ai"])
+        assert r5.exit_code == 0, f"Tag-add Anna ai failed: {r5.stdout}"
 
         # sort by tag_count: Pavlo (2 tags) has to be before Anna (1 tag)
         r = runner.invoke(app, ["all", "--sort-by", "tag_count"])
-        assert r.exit_code == 0, r.stdout
+        assert r.exit_code == 0, f"Exit code: {r.exit_code}\nOutput: {r.stdout}"
         out = r.stdout
+        # Verify both names appear
+        assert "Pavlo" in out, f"Pavlo not found in output:\n{out}"
+        assert "Anna" in out, f"Anna not found in output:\n{out}"
         assert out.index("Pavlo") < out.index("Anna")
 
         # sort by tag_name: minimal tag "ai" Anna -> Anna must be before Pavlo (minimal tag "ai" == "ai")
@@ -31,9 +39,9 @@ def test_all_group_filter_current_and_all():
     with runner.isolated_filesystem():
         # default personal
         runner.invoke(app, ["group-add", "work"])
-        runner.invoke(app, ["add", "Alice", "1111111111"])  # personal
+        runner.invoke(app, ["add", "Alice", "1234567890"])  # personal
         runner.invoke(app, ["group-use", "work"])
-        runner.invoke(app, ["add", "Bob", "2222222222"])    # work
+        runner.invoke(app, ["add", "Bob", "9876543210"])    # work
 
         # default (current group = work)
         r = runner.invoke(app, ["all"])

@@ -112,7 +112,7 @@ def test_record_str_representation():
 def test_record_str_representation_without_phones():
     """Test that Record string representation works without phones."""
     record = Record("John")
-    assert str(record) == "Contact name: John, phones: "
+    assert str(record) == "Contact name: John"
 
 
 def test_record_repr_representation():
@@ -149,7 +149,7 @@ def test_record_str_representation_with_birthday_no_phones():
     """Test that Record string representation with birthday but no phones."""
     record = Record("John")
     record.add_birthday("15.05.1990")
-    assert str(record) == "Contact name: John, phones: , birthday: 15.05.1990"
+    assert str(record) == "Contact name: John, birthday: 15.05.1990"
 
 
 def test_record_update_birthday():
