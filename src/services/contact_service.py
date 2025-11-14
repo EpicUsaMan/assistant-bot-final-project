@@ -167,7 +167,7 @@ class ContactService:
         if not record.phones:
             return f"No phones for contact '{name}'."
 
-        return "; ".join(p.value for p in record.phones)
+        return "; ".join(p.display_value for p in record.phones)
 
     def get_all_contacts(
         self,
@@ -191,7 +191,7 @@ class ContactService:
 
             lines: list[str] = []
             for name, rec in items:
-                phones = "; ".join(p.value for p in rec.phones) if rec.phones else ""
+                phones = "; ".join(p.display_value for p in rec.phones) if rec.phones else ""
                 tags = ", ".join(rec.tags_list())
                 line = f"Contact name: {name}, phones: {phones}"
                 if tags:
@@ -217,7 +217,7 @@ class ContactService:
 
             # contacts in group
             for name, rec in items:
-                phones = "; ".join(p.value for p in rec.phones) if rec.phones else ""
+                phones = "; ".join(p.display_value for p in rec.phones) if rec.phones else ""
                 tags = ", ".join(rec.tags_list())
                 line = f"  Contact name: {name}, phones: {phones}"
                 if tags:

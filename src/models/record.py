@@ -104,8 +104,9 @@ class Record:
         Returns:
             Phone object if found, None otherwise
         """
+        canonical = Phone(phone).value
         for phone_obj in self.phones:
-            if phone_obj.value == phone:
+            if phone_obj.value == canonical:
                 return phone_obj
         return None
     
@@ -158,7 +159,7 @@ class Record:
         self.address = None
     
     def __str__(self) -> str:
-        phones_str = '; '.join(p.value for p in self.phones) if self.phones else ""
+        phones_str = '; '.join(p.display_value for p in self.phones) if self.phones else ""
         parts = [f"Contact name: {self.name.value}"]
         
         if phones_str:
@@ -184,8 +185,17 @@ class Record:
 
         if "tags" not in self.__dict__:
             self.tags = Tags()
-        if "notes" not in self.__dict__:
-            self.notes = {}
+        
+        # migrate phone instances / raw strings
+        migrated: list[Phone] = []
+        for item in getattr(self, "phones", []):
+            if isinstance(item, Phone):
+                # recreate phone object from canonical string
+                migrated.append(Phone(item.display_value))
+            else:
+                # in case a string was saved in the pickle
+                migrated.append(Phone(str(item)))
+        self.phones = migrated
 
         if not hasattr(self, "group_id") or not self.group_id:
             self.group_id = DEFAULT_GROUP_ID
