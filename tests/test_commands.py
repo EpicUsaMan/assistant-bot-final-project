@@ -42,6 +42,8 @@ def setup_container():
             'src.commands.add_birthday',
             'src.commands.show_birthday',
             'src.commands.birthdays',
+            'src.commands.email',
+            'src.commands.address',
         ]
         container.wire(modules=command_modules)
         src.main._container_wired = True

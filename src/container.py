@@ -10,7 +10,7 @@ from src.models.address_book import AddressBook
 from src.services.contact_service import ContactService
 from src.services.note_service import NoteService
 from src.services.search_service import SearchService
-from src.utils.progressive_params import ContactSelector, NoteSelector, TagSelector, TextInput, ConfirmInput, TagsInput, SelectInput
+from src.utils.progressive_params import ContactSelector, NoteSelector, TagSelector, TextInput, EmailInput, ConfirmInput, TagsInput, SelectInput, CountrySelector, CitySelector
 
 
 class Container(containers.DeclarativeContainer):
@@ -82,6 +82,10 @@ class Container(containers.DeclarativeContainer):
         TextInput
     )
     
+    email_input_factory = providers.Factory(
+        EmailInput
+    )
+    
     confirm_input_factory = providers.Factory(
         ConfirmInput
     )
@@ -92,6 +96,14 @@ class Container(containers.DeclarativeContainer):
     
     select_input_factory = providers.Factory(
         SelectInput
+    )
+    
+    country_selector_factory = providers.Factory(
+        CountrySelector
+    )
+    
+    city_selector_factory = providers.Factory(
+        CitySelector
     )
     
     def save_data(self) -> None:

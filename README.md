@@ -54,6 +54,8 @@ python src/main.py
 # Work with contacts
 > add John 1234567890
 > add-birthday John 15.05.1990
+> email add John john@example.com
+> address set John UA Kyiv "Main St 1"
 > all
 > birthdays
 
@@ -83,6 +85,12 @@ python src/main.py birthdays
 python src/main.py tag-add "John Doe" ml ai
 python src/main.py all --sort-by tag_count
 
+# Email and Address
+python src/main.py email add "John Doe" "john@example.com"
+python src/main.py email remove "John Doe"
+python src/main.py address set "John Doe" "UA" "Kyiv" "Main St 1"
+python src/main.py address remove "John Doe"
+
 # Notes
 python src/main.py notes add "John" "Meeting" "Discuss project"
 python src/main.py notes tag-add "John" "Meeting" important work
@@ -97,6 +105,8 @@ python src/main.py search notes "meeting" --by=text
 
 ### Core Functionality
 - **Contact Management**: Add, edit, delete contacts with multiple phones and birthdays
+- **Email Management**: Add and remove email addresses with validation and normalization
+- **Address Management**: Set and remove addresses with interactive country/city selection
 - **Notes System**: Text notes attached to contacts with full CRUD operations
 - **Tagging**: Tag both contacts and notes for organization
 - **Advanced Search**: Search by name, phone, tags, notes content with flexible criteria
@@ -139,6 +149,62 @@ python src/main.py search notes "meeting" --by=text
 | `group-list`    | None                          | Show all groups with contact counts and current mark |
 | `group-add`     | `<group_id>`                  | Create a new group                                   |
 | `group-use`     | `<group_id>`                  | Switch active group                                  |
+
+### Email Management
+| Command | Arguments | Description |
+|---------|-----------|-------------|
+| `email add` | contact_name, email | Add or update email address for a contact |
+| `email remove` | contact_name | Remove email address from a contact |
+| `email` | None | Interactive email management menu |
+
+**Email Features:**
+- Automatic normalization to lowercase
+- Format validation (RFC-compliant)
+- Works reliably in all terminals (uses typer.prompt for @ symbol compatibility)
+
+**Examples:**
+```bash
+# Interactive mode - prompts for missing parameters
+> email add
+> email add "John Doe"
+> email add "John Doe" "john@example.com"
+
+# Remove email
+> email remove "John Doe"
+```
+
+### Address Management
+| Command | Arguments | Description |
+|---------|-----------|-------------|
+| `address set` | contact_name, country, city, address_line | Set address for a contact with interactive selection |
+| `address remove` | contact_name | Remove address from a contact |
+| `address` | None | Interactive address management menu |
+
+**Address Features:**
+- Interactive country selection from predefined catalog
+- Interactive city selection with option to add new cities
+- Supports partial address (country only, country+city, or full address)
+- User-added cities are saved to catalog for future use
+
+**Examples:**
+```bash
+# Fully interactive - prompts for all parameters
+> address set
+
+# Partially interactive - prompts for missing parameters
+> address set "John Doe"
+> address set "John Doe" "UA"
+> address set "John Doe" "UA" "Kyiv"
+> address set "John Doe" "UA" "Kyiv" "Main St 1"
+
+# Remove address
+> address remove "John Doe"
+```
+
+**Interactive Selection:**
+- Country: Choose from predefined list (UA, PL, US, GB, DE, FR, IT, ES, CA, AU)
+- City: Select from existing cities or add new one if not found
+- Address line: Free text input
 
 ### Groups: CLI usage
 
@@ -237,6 +303,8 @@ src/
 ├── commands/                  # Command layer (Controller + View)
 │   ├── add.py                 # Contact commands
 │   ├── tags.py                # Tag commands
+│   ├── email.py               # Email commands (subcommand group)
+│   ├── address.py             # Address commands (subcommand group)
 │   ├── notes.py               # Notes commands
 │   ├── search.py              # Search commands
 │   └── ...
@@ -247,11 +315,15 @@ src/
 ├── models/                    # Model layer (Data structures)
 │   ├── address_book.py        # Main data container
 │   ├── record.py              # Contact record
+│   ├── email.py               # Email field model
+│   ├── address.py             # Address model
 │   ├── note.py                # Note model
 │   ├── tags.py                # Tags value object
 │   └── ...
 └── utils/                     # Cross-cutting utilities
     ├── validators.py          # Input validators
+    ├── locations.py           # Country/city catalog management
+    ├── progressive_params.py # Interactive parameter fulfillment
     ├── command_decorators.py  # Error handling & auto-save
     ├── interactive_menu.py    # Menu helpers
     └── ...
@@ -376,12 +448,16 @@ coverage-badge -o coverage.svg -f
 # Test models
 pytest tests/test_address_book.py
 pytest tests/test_record.py
+pytest tests/test_email.py
+pytest tests/test_address.py
 
 # Test services
 pytest tests/test_contact_service.py
 
 # Test commands
 pytest tests/test_commands.py
+pytest tests/test_email_commands.py
+pytest tests/test_address_commands.py
 ```
 
 ### Test Organization
@@ -428,6 +504,7 @@ pytest tests/test_commands.py
 1. **CLI Parameter Validation** (Typer callbacks):
    - Phone: exactly 10 digits
    - Birthday: DD.MM.YYYY format
+   - Email: RFC-compliant format, normalized to lowercase
    - Tags: `[a-z0-9_-]`, length `1..32`
    - User sees which parameter failed
 

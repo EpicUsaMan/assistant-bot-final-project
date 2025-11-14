@@ -110,7 +110,7 @@ def test_record_str_representation():
 def test_record_str_representation_without_phones():
     """Test that Record string representation works without phones."""
     record = Record("John")
-    assert str(record) == "Contact name: John, phones: "
+    assert str(record) == "Contact name: John"
 
 
 def test_record_repr_representation():
@@ -147,7 +147,7 @@ def test_record_str_representation_with_birthday_no_phones():
     """Test that Record string representation with birthday but no phones."""
     record = Record("John")
     record.add_birthday("15.05.1990")
-    assert str(record) == "Contact name: John, phones: , birthday: 15.05.1990"
+    assert str(record) == "Contact name: John, birthday: 15.05.1990"
 
 
 def test_record_update_birthday():
@@ -343,6 +343,157 @@ def test_record_note_list_tags_from_non_existent_note_raises_error():
         record.note_list_tags("NonExistent")
 
 
+# --- Email Management Tests ---
+
+def test_record_initialization_includes_email():
+    """Test that Record initializes with None email."""
+    record = Record("John")
+    assert record.email is None
+
+
+def test_record_add_email():
+    """Test that Record can add an email address."""
+    record = Record("John")
+    record.add_email("john@example.com")
+    assert record.email is not None
+    assert record.email.value == "john@example.com"
+
+
+def test_record_add_email_normalizes_to_lowercase():
+    """Test that adding email normalizes to lowercase."""
+    record = Record("John")
+    record.add_email("JOHN@EXAMPLE.COM")
+    assert record.email.value == "john@example.com"
+
+
+def test_record_add_email_invalid_format_raises_error():
+    """Test that adding invalid email raises ValueError."""
+    record = Record("John")
+    with pytest.raises(ValueError):
+        record.add_email("invalid-email")
+
+
+def test_record_add_email_updates_existing():
+    """Test that adding email updates existing email."""
+    record = Record("John")
+    record.add_email("john@example.com")
+    record.add_email("john.new@example.com")
+    assert record.email.value == "john.new@example.com"
+
+
+def test_record_remove_email():
+    """Test that Record can remove email address."""
+    record = Record("John")
+    record.add_email("john@example.com")
+    record.remove_email()
+    assert record.email is None
+
+
+def test_record_remove_email_when_not_set():
+    """Test that removing email when not set does nothing."""
+    record = Record("John")
+    record.remove_email()  # Should not raise error
+    assert record.email is None
+
+
+# --- Address Management Tests ---
+
+def test_record_initialization_includes_address():
+    """Test that Record initializes with None address."""
+    record = Record("John")
+    assert record.address is None
+
+
+def test_record_set_address():
+    """Test that Record can set an address."""
+    record = Record("John")
+    record.set_address("UA", "Kyiv", "Main St 1")
+    assert record.address is not None
+    assert record.address.country == "UA"
+    assert record.address.city == "Kyiv"
+    assert record.address.address_line == "Main St 1"
+
+
+def test_record_set_address_updates_existing():
+    """Test that setting address updates existing address."""
+    record = Record("John")
+    record.set_address("UA", "Kyiv", "Main St 1")
+    record.set_address("PL", "Warsaw", "New St 2")
+    assert record.address.country == "PL"
+    assert record.address.city == "Warsaw"
+    assert record.address.address_line == "New St 2"
+
+
+def test_record_set_address_strips_whitespace():
+    """Test that setting address strips whitespace."""
+    record = Record("John")
+    record.set_address("  UA  ", "  Kyiv  ", "  Main St 1  ")
+    assert record.address.country == "UA"
+    assert record.address.city == "Kyiv"
+    assert record.address.address_line == "Main St 1"
+
+
+def test_record_remove_address():
+    """Test that Record can remove address."""
+    record = Record("John")
+    record.set_address("UA", "Kyiv", "Main St 1")
+    record.remove_address()
+    assert record.address is None
+
+
+def test_record_remove_address_when_not_set():
+    """Test that removing address when not set does nothing."""
+    record = Record("John")
+    record.remove_address()  # Should not raise error
+    assert record.address is None
+
+
+# --- String Representation Tests with Email and Address ---
+
+def test_record_str_representation_with_email():
+    """Test that Record string representation includes email."""
+    record = Record("John")
+    record.add_phone("1234567890")
+    record.add_email("john@example.com")
+    assert "email: john@example.com" in str(record)
+
+
+def test_record_str_representation_with_address():
+    """Test that Record string representation includes address."""
+    record = Record("John")
+    record.add_phone("1234567890")
+    record.set_address("UA", "Kyiv", "Main St 1")
+    assert "address: Main St 1, Kyiv, UA" in str(record)
+
+
+def test_record_str_representation_with_email_and_address():
+    """Test that Record string representation includes both email and address."""
+    record = Record("John")
+    record.add_phone("1234567890")
+    record.add_email("john@example.com")
+    record.set_address("UA", "Kyiv", "Main St 1")
+    result = str(record)
+    assert "email: john@example.com" in result
+    assert "address: Main St 1, Kyiv, UA" in result
+
+
+def test_record_str_representation_with_empty_address():
+    """Test that Record string representation excludes empty address."""
+    record = Record("John")
+    record.add_phone("1234567890")
+    record.set_address("", "", "")
+    result = str(record)
+    assert "address:" not in result
+
+
+def test_record_str_representation_with_partial_address():
+    """Test that Record string representation includes partial address."""
+    record = Record("John")
+    record.set_address("UA", "Kyiv", "")
+    result = str(record)
+    assert "address: Kyiv, UA" in result
+
+
 # --- Backward Compatibility Tests ---
 
 def test_record_setstate_adds_missing_notes():
@@ -352,4 +503,39 @@ def test_record_setstate_adds_missing_notes():
     record.__setstate__(state)
     assert hasattr(record, "notes")
     assert record.notes == {}
+
+
+def test_record_setstate_adds_missing_email_and_address():
+    """Test that __setstate__ adds missing email and address attributes."""
+    record = Record("John")
+    state = {"name": record.name, "phones": [], "birthday": None, "tags": record.tags, "notes": {}}
+    record.__setstate__(state)
+    assert hasattr(record, "email")
+    assert record.email is None
+    assert hasattr(record, "address")
+    assert record.address is None
+
+
+def test_record_setstate_migrates_old_address_fields():
+    """Test that __setstate__ migrates old address fields to Address object."""
+    record = Record("John")
+    state = {
+        "name": record.name,
+        "phones": [],
+        "birthday": None,
+        "tags": record.tags,
+        "notes": {},
+        "country": "UA",
+        "city": "Kyiv",
+        "address_line": "Main St 1"
+    }
+    record.__setstate__(state)
+    assert record.address is not None
+    assert record.address.country == "UA"
+    assert record.address.city == "Kyiv"
+    assert record.address.address_line == "Main St 1"
+    # Old fields should be removed
+    assert not hasattr(record, "country")
+    assert not hasattr(record, "city")
+    assert not hasattr(record, "address_line")
 

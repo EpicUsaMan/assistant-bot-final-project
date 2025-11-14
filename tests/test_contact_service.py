@@ -940,3 +940,173 @@ class TestCalculateUpcomingBirthdays:
             congrat_date_str = results[0]["congratulation_date"]
             congrat_date = datetime.strptime(congrat_date_str, "%d.%m.%Y").date()
             assert congrat_date.weekday() == 0  # Monday
+
+
+class TestEmailManagement:
+    """Tests for email management methods."""
+    
+    def test_add_email(self, contact_service):
+        """Test adding an email to a contact."""
+        contact_service.add_contact("Alice", "1234567890")
+        result = contact_service.add_email("Alice", "alice@example.com")
+        assert "added" in result.lower()
+        record = contact_service.address_book.find("Alice")
+        assert record.email is not None
+        assert record.email.value == "alice@example.com"
+    
+    def test_add_email_normalizes_to_lowercase(self, contact_service):
+        """Test that email is normalized to lowercase."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.add_email("Alice", "ALICE@EXAMPLE.COM")
+        record = contact_service.address_book.find("Alice")
+        assert record.email.value == "alice@example.com"
+    
+    def test_add_email_updates_existing(self, contact_service):
+        """Test that adding email updates existing email."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.add_email("Alice", "alice@example.com")
+        contact_service.add_email("Alice", "alice.new@example.com")
+        record = contact_service.address_book.find("Alice")
+        assert record.email.value == "alice.new@example.com"
+    
+    def test_add_email_contact_not_found(self, contact_service):
+        """Test adding email to non-existent contact raises error."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.add_email("NonExistent", "test@example.com")
+    
+    def test_add_email_invalid_format(self, contact_service):
+        """Test adding invalid email format raises error."""
+        contact_service.add_contact("Alice", "1234567890")
+        with pytest.raises(ValueError):
+            contact_service.add_email("Alice", "invalid-email")
+    
+    def test_remove_email(self, contact_service):
+        """Test removing email from a contact."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.add_email("Alice", "alice@example.com")
+        result = contact_service.remove_email("Alice")
+        assert "removed" in result.lower()
+        record = contact_service.address_book.find("Alice")
+        assert record.email is None
+    
+    def test_remove_email_contact_not_found(self, contact_service):
+        """Test removing email from non-existent contact raises error."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.remove_email("NonExistent")
+    
+    def test_remove_email_not_set(self, contact_service):
+        """Test removing email when not set returns appropriate message."""
+        contact_service.add_contact("Alice", "1234567890")
+        result = contact_service.remove_email("Alice")
+        assert "No email set" in result
+
+
+class TestAddressManagement:
+    """Tests for address management methods."""
+    
+    def test_set_address(self, contact_service):
+        """Test setting an address for a contact."""
+        contact_service.add_contact("Alice", "1234567890")
+        result = contact_service.set_address("Alice", "UA", "Kyiv", "Main St 1")
+        assert "set" in result.lower()
+        record = contact_service.address_book.find("Alice")
+        assert record.address is not None
+        assert record.address.country == "UA"
+        assert record.address.city == "Kyiv"
+        assert record.address.address_line == "Main St 1"
+    
+    def test_set_address_updates_existing(self, contact_service):
+        """Test that setting address updates existing address."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.set_address("Alice", "UA", "Kyiv", "Main St 1")
+        contact_service.set_address("Alice", "PL", "Warsaw", "New St 2")
+        record = contact_service.address_book.find("Alice")
+        assert record.address.country == "PL"
+        assert record.address.city == "Warsaw"
+        assert record.address.address_line == "New St 2"
+    
+    def test_set_address_strips_whitespace(self, contact_service):
+        """Test that setting address strips whitespace."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.set_address("Alice", "  UA  ", "  Kyiv  ", "  Main St 1  ")
+        record = contact_service.address_book.find("Alice")
+        assert record.address.country == "UA"
+        assert record.address.city == "Kyiv"
+        assert record.address.address_line == "Main St 1"
+    
+    def test_set_address_contact_not_found(self, contact_service):
+        """Test setting address for non-existent contact raises error."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.set_address("NonExistent", "UA", "Kyiv", "Main St 1")
+    
+    def test_remove_address(self, contact_service):
+        """Test removing address from a contact."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.set_address("Alice", "UA", "Kyiv", "Main St 1")
+        result = contact_service.remove_address("Alice")
+        assert "removed" in result.lower()
+        record = contact_service.address_book.find("Alice")
+        assert record.address is None
+    
+    def test_remove_address_contact_not_found(self, contact_service):
+        """Test removing address from non-existent contact raises error."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.remove_address("NonExistent")
+    
+    def test_remove_address_not_set(self, contact_service):
+        """Test removing address when not set returns appropriate message."""
+        contact_service.add_contact("Alice", "1234567890")
+        result = contact_service.remove_address("Alice")
+        assert "No address set" in result
+    
+    def test_remove_address_empty_address(self, contact_service):
+        """Test removing empty address returns appropriate message."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.set_address("Alice", "", "", "")
+        result = contact_service.remove_address("Alice")
+        assert "No address set" in result
+
+
+class TestGetAllContactsWithEmailAndAddress:
+    """Tests for get_all_contacts displaying email and address."""
+    
+    def test_get_all_contacts_includes_email(self, contact_service):
+        """Test that get_all_contacts includes email in output."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.add_email("Alice", "alice@example.com")
+        result = contact_service.get_all_contacts()
+        assert "alice@example.com" in result
+    
+    def test_get_all_contacts_includes_address(self, contact_service):
+        """Test that get_all_contacts includes address in output."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.set_address("Alice", "UA", "Kyiv", "Main St 1")
+        result = contact_service.get_all_contacts()
+        assert "Main St 1, Kyiv, UA" in result
+    
+    def test_get_all_contacts_includes_email_and_address(self, contact_service):
+        """Test that get_all_contacts includes both email and address."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.add_email("Alice", "alice@example.com")
+        contact_service.set_address("Alice", "UA", "Kyiv", "Main St 1")
+        result = contact_service.get_all_contacts()
+        assert "alice@example.com" in result
+        assert "Main St 1, Kyiv, UA" in result
+    
+    def test_get_all_contacts_grouped_includes_email_and_address(self, contact_service):
+        """Test that get_all_contacts with group='all' includes email and address."""
+        contact_service.add_group("work")
+        contact_service.add_contact("Alice", "1111111111", group_id="personal")
+        contact_service.add_email("Alice", "alice@example.com")
+        contact_service.set_address("Alice", "UA", "Kyiv", "Main St 1")
+        
+        contact_service.set_current_group("work")
+        contact_service.add_contact("Bob", "2222222222", group_id="work")
+        contact_service.add_email("Bob", "bob@example.com")
+        contact_service.set_address("Bob", "PL", "Warsaw", "New St 2")
+        
+        result = contact_service.get_all_contacts(group="all")
+        assert "alice@example.com" in result
+        assert "Main St 1, Kyiv, UA" in result
+        assert "bob@example.com" in result
+        assert "New St 2, Warsaw, PL" in result

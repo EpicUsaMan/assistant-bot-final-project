@@ -150,6 +150,12 @@ def auto_register_commands():
             elif module_name == "search":
                 # Register as subcommand group: search contacts, search notes, search menu
                 app.add_typer(module.app, name="search")
+            elif module_name == "email":
+                # Register as subcommand group: email add, email remove
+                app.add_typer(module.app, name="email")
+            elif module_name == "address":
+                # Register as subcommand group: address set, address remove
+                app.add_typer(module.app, name="address")
             else:
                 # Register commands at root level
                 app.add_typer(module.app, name="")

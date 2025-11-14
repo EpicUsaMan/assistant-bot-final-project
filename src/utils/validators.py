@@ -150,46 +150,65 @@ def validate_birthday(value: str) -> str:
     return bday.strftime(_BDAY_FMT)  # normalize formatting
 
 
-def validate_email(value: str) -> str:
+def _validate_email_format(value: str) -> str:
     """
-    Validate email format for CLI input.
-
-    Example validator for future use with email validation library.
-
+    Internal email validation function (used by both model and CLI validator).
+    
     Args:
         value: Email string
-
+        
     Returns:
-        Validated email string
-
+        Normalized email (lowercase)
+        
     Raises:
-        typer.BadParameter: If email format is invalid
+        ValueError: If email format is invalid
     """
-    raw = (value or "").strip().lower()
+    raw = (value or "").strip()
 
     if not raw:
-        raise typer.BadParameter("Email is empty")
+        raise ValueError("Email cannot be empty")
 
     if " " in raw:
-        raise typer.BadParameter("Email must not contain spaces")
+        raise ValueError("Email must not contain spaces")
 
-    m = _EMAIL_RE.fullmatch(raw)
+    normalized = raw.lower()
+    
+    m = _EMAIL_RE.fullmatch(normalized)
     if not m:
-        raise typer.BadParameter("Invalid email format")
+        raise ValueError("Invalid email format")
 
     local, domain = m.group("local"), m.group("domain")
 
     # reject local or domain starting/ending with dot or hyphen
     if local[0] in ".-" or local[-1] in ".-":
-        raise typer.BadParameter("Invalid email: bad local part")
+        raise ValueError("Invalid email: bad local part")
     if domain[0] in ".-" or domain[-1] in ".-":
-        raise typer.BadParameter("Invalid email: bad domain")
+        raise ValueError("Invalid email: bad domain")
 
     # reject consecutive dots
-    if ".." in raw:
-        raise typer.BadParameter("Invalid email: double dots are not allowed")
+    if ".." in normalized:
+        raise ValueError("Invalid email: double dots are not allowed")
 
-    return raw
+    return normalized
+
+
+def validate_email(value: str) -> str:
+    """
+    Validate email format for CLI input (Typer callback).
+
+    Args:
+        value: Email string
+        
+    Returns:
+        Validated and normalized email string (lowercase)
+        
+    Raises:
+        typer.BadParameter: If email format is invalid
+    """
+    try:
+        return _validate_email_format(value)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
 
 # Tag validation utilities
