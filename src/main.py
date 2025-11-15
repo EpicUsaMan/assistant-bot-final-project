@@ -20,6 +20,7 @@ import typer
 import click
 from rich.console import Console
 from rich.panel import Panel
+from rich.tree import Tree
 from src.container import Container
 from src.utils.paths import get_storage_path
 from src.services.contact_service import ContactService
@@ -79,14 +80,13 @@ def _build_welcome_text() -> str:
     return "\n".join(lines)
 
 
-def _print_welcome_panel() -> None:
-    console.print(
-        Panel(
-            _build_welcome_text(),
-            title="[bold]Assistant Bot[/bold]",
-            border_style="green",
-        )
-    )
+def _print_menu() -> None:
+    root_click_app = typer.main.get_command(app)
+    commands_tree_data = build_commands(root_click_app)
+
+    tree = render_menu(commands_tree_data)
+
+    console.print(tree)
 
 def auto_register_commands():
     """
@@ -174,7 +174,7 @@ def interactive():
     from click import Context
     from src.utils.repl_completer import create_context_aware_completer_for_repl
     
-    _print_welcome_panel()
+    _print_menu()
 
     ctx = Context(typer.main.get_command(app))
     
@@ -209,7 +209,7 @@ def run_interactive():
     from click import Context
     from src.utils.repl_completer import create_context_aware_completer_for_repl
 
-    _print_welcome_panel()
+    _print_menu()
 
     ctx = Context(typer.main.get_command(app))
 
@@ -226,6 +226,59 @@ def run_interactive():
     except (EOFError, KeyboardInterrupt):
         console.print("\n[bold green]Good bye![/bold green]")
 
+def build_commands(click_group: click.Group, name: str = "") -> dict:
+    """
+    Creates tree of commands Typer/Click.
+
+    Returns dict-node with structure:
+        {
+            "name": <node name>,
+            "help": <help>,
+            "children": [<chiled nodes>...]
+        }
+    """
+    node = {
+        "name": name,
+        "help": (click_group.help or "").strip().splitlines()[0] if name else "",
+        "children": [],
+    }
+
+    for cmd_name, cmd in click_group.commands.items():
+        if isinstance(cmd, click.Group):
+            # subgroup (sub-app) → recursively build a subtree
+            child = build_commands(cmd, name=cmd_name)
+            node["children"].append(child)
+        else:
+            # regular command (leaf node)
+            help_line = (cmd.help or "").strip().splitlines()[0] if cmd.help else ""
+            node["children"].append(
+                {
+                    "name": cmd_name,
+                    "help": help_line,
+                    "children": [],
+                }
+            )
+
+    return node
+
+def render_menu(node: dict) -> Tree:
+    # node CLI — no name → add default label
+    label = node["name"] or "[bold cyan]Assistant Bot Commands[/]"
+    tree = Tree(label)
+
+    def add_children(rich_node: Tree, data_node: dict):
+        for child in data_node["children"]:
+            # title of a node: name + help
+            if child["help"]:
+                label = f"[cyan]{child['name']}[/] — {child['help']}"
+            else:
+                label = f"[bold yellow]{child['name']}[/]"
+
+            child_rich = rich_node.add(label)
+            add_children(child_rich, child)
+
+    add_children(tree, node)
+    return tree
 
 def main():
     """
