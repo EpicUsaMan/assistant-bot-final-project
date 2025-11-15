@@ -81,7 +81,7 @@ def show_address_book(book: dict) -> Tree:
 @handle_service_errors
 def _all_impl(
     sort_by: Optional[ContactSortBy] = None,
-    group: Optional[str] = None,
+    group: Optional[str] = "all",
     service: ContactService = Provide[Container.contact_service],
 ):
     if not service.has_contacts():
@@ -99,7 +99,7 @@ def all_command(
         help="Sort by: name, phone, birthday, tag_count or tag_name",
     ),
     group: Optional[str] = typer.Option(
-        None,
+        "all",
         "--group",
         help="Group filter: current (default), all or specific group id",
     ),
