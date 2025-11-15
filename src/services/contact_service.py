@@ -16,7 +16,7 @@ from src.models.record import Record
 from src.models.tags import Tags
 from src.models.group import Group, DEFAULT_GROUP_ID, normalize_group_id
 from src.utils.validators import is_valid_tag, normalize_tag, split_tags_string
-
+from rich.tree import Tree
 
 class ContactSortBy(str, Enum):
     """
@@ -174,74 +174,42 @@ class ContactService:
         self,
         sort_by: "ContactSortBy | None" = None,
         group: str | None = None,
-    ) -> str:
+    ) -> dict:
         """
-        Get contacts as a formatted string.
-
+        Return all contacts as a pure dictionary (no formatting).
         Args:
             sort_by: Sorting criteria
             group: Group filter:
                 None / "current" – only current group
-                "all" – all groups (grouped in output)
-                <group_id> – specific group
+
+        Structure:
+            "all" – all groups (grouped in output)
+            <group_id> – specific group
         """
+        # CASE 1: single group / current group
         if group != "all":
             items = self.list_contacts(sort_by=sort_by, group=group)
+
             if not items:
-                return "Address book is empty."
+                return {}  # empty dict if no contacts
 
-            lines: list[str] = []
-            for name, rec in items:
-                phones = "; ".join(p.display_value for p in rec.phones) if rec.phones else ""
-                tags = ", ".join(rec.tags_list())
-                line = f"Contact name: {name}, phones: {phones}"
-                if tags:
-                    line += f", tags: {tags}"
-                if rec.email:
-                    line += f", email: {rec.email.value}"
-                if rec.address and not rec.address.is_empty():
-                    line += f", address: {rec.address}"
-                lines.append(line)
-            return "\n\n".join(lines)
+            # convert to dict { name: record }
+            return {name: rec for name, rec in items}
 
-        all_lines: list[str] = []        
-        
-        for group_obj  in self.address_book.iter_groups():
-            # contacts in this group sorted
+        # CASE 2: ALL GROUPS
+        result: dict = {}
+
+        for group_obj in self.address_book.iter_groups():
             gid = group_obj.id
+
             items = self.list_contacts(sort_by=sort_by, group=gid)
             if not items:
                 continue
 
-            # group header
-            all_lines.append(f"Group: {gid}")
+            # create dictionary for this group
+            result[gid] = {name: rec for name, rec in items}
 
-            # contacts in group
-            for name, rec in items:
-                phones = "; ".join(p.display_value for p in rec.phones) if rec.phones else ""
-                tags = ", ".join(rec.tags_list())
-                line = f"  Contact name: {name}, phones: {phones}"
-                if tags:
-                    line += f", tags: {tags}"
-                if rec.email:
-                    line += f", email: {rec.email.value}"
-                if rec.address and not rec.address.is_empty():
-                    line += f", address: {rec.address}"
-                all_lines.append(line)
-
-            # separator
-            all_lines.append("")
-
-        # when no contacts
-        if not all_lines:
-            return "Address book is empty."
-
-        # remove last divider
-        if all_lines and all_lines[-1] == "":
-            all_lines.pop()
-
-        return "\n".join(all_lines)
-
+        return result  # empty dict if no groups/contacts
 
     def add_birthday(self, name: str, birthday: str) -> str:
         """
