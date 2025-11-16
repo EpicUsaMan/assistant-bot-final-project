@@ -8,10 +8,10 @@ from unittest.mock import Mock, patch
 from typer.testing import CliRunner
 import click
 
-from src.commands.address import (
-    app,
-    _set_address_impl,
-    _remove_address_impl,
+from src.commands.contact import (
+    address_app as app,
+    _address_set_impl as _set_address_impl,
+    _address_remove_impl as _remove_address_impl,
 )
 from src.main import app as main_app, container
 
@@ -139,7 +139,7 @@ class TestAddressCommandsCLI:
         mock_contact_service.set_address.return_value = "Address set for John."
         
         with container.contact_service.override(mock_contact_service):
-            result = runner.invoke(main_app, ["address", "set", "John", "UA", "Kyiv", "Main St 1"])
+            result = runner.invoke(main_app, ["contact", "address", "set", "John", "UA", "Kyiv", "Main St 1"])
         
         assert result.exit_code == 0
         assert "set" in result.stdout.lower()

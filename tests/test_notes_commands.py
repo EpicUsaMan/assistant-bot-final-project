@@ -9,7 +9,7 @@ from src.commands.notes import (
     app,
     _add_note_impl,
     _edit_note_impl,
-    _delete_note_impl,
+    _remove_note_impl,  # renamed from _delete_note_impl
     _list_notes_impl,
     _show_note_impl,
     _note_tag_add_impl,
@@ -57,14 +57,14 @@ class TestEditNoteImpl:
         mock_note_service.edit_note.assert_called_once_with("John", "Meeting", "New content")
 
 
-class TestDeleteNoteImpl:
-    """Tests for _delete_note_impl function."""
+class TestRemoveNoteImpl:
+    """Tests for _remove_note_impl function."""
     
-    def test_delete_note_success(self, mock_note_service):
-        """Test deleting a note successfully."""
+    def test_remove_note_success(self, mock_note_service):
+        """Test removing a note successfully."""
         mock_note_service.delete_note.return_value = "Note 'Meeting' deleted from John."
         
-        _delete_note_impl("John", "Meeting", service=mock_note_service, filename="test.pkl")
+        _remove_note_impl("John", "Meeting", service=mock_note_service, filename="test.pkl")
         
         mock_note_service.delete_note.assert_called_once_with("John", "Meeting")
 

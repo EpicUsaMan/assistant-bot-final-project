@@ -19,7 +19,6 @@ if str(project_root) not in sys.path:
 import typer
 import click
 from rich.console import Console
-from rich.panel import Panel
 from rich.tree import Tree
 from src.container import Container
 from src.utils.paths import get_storage_path
@@ -47,37 +46,17 @@ def _make_group_prompt() -> str:
 
 
 def _iter_commands() -> list[tuple[str, str]]:
-    """Collect (name, help) for top-level commands, skipping internal ones."""
+    """Collect (name, help) for top-level commands."""
     root_cmd: click.Command = typer.main.get_command(app)
     result: list[tuple[str, str]] = []
 
     for name, cmd in root_cmd.commands.items():
-        # filter tech commands if needed
-        if name in {"interactive"}:
-            continue
         help_line = (cmd.help or "").strip().splitlines()[0] if cmd.help else ""
         result.append((name, help_line))
 
     # sorted by name
     result.sort(key=lambda x: x[0])
     return result
-
-
-def _build_welcome_text() -> str:
-    lines: list[str] = [
-        "[bold green]Welcome to the Assistant Bot![/bold green]\n",
-        "Available commands:",
-    ]
-    for name, help_line in _iter_commands():
-        if help_line:
-            lines.append(f"  • [cyan]{name}[/cyan] - {help_line}")
-        else:
-            lines.append(f"  • [cyan]{name}[/cyan]")
-    lines.append(
-        "\nType [cyan]--help[/cyan] after any command to see details, "
-        "e.g. [cyan]add --help[/cyan]."
-    )
-    return "\n".join(lines)
 
 
 def _print_menu() -> None:
@@ -139,62 +118,20 @@ def auto_register_commands():
             console.print(f"[yellow]Warning: Failed to wire container: {e}[/yellow]")
     
     # Step 3: Mount all command apps to the main app
+    # Command groups use their module name, others register at root level
+    COMMAND_GROUPS = {"contact", "notes", "group", "search"}
+    
     for idx, module in enumerate(module_objects):
         try:
-            module_name = module_names[idx].split('.')[-1]  # Get the module name
+            module_name = module_names[idx].split('.')[-1]
             
-            # Special handling for command groups (subcommands)
-            if module_name == "notes":
-                # Register as subcommand group: notes add, notes edit, etc.
-                app.add_typer(module.app, name="notes")
-            elif module_name == "search":
-                # Register as subcommand group: search contacts, search notes, search menu
-                app.add_typer(module.app, name="search")
-            elif module_name == "email":
-                # Register as subcommand group: email add, email remove
-                app.add_typer(module.app, name="email")
-            elif module_name == "address":
-                # Register as subcommand group: address set, address remove
-                app.add_typer(module.app, name="address")
-            else:
-                # Register commands at root level
-                app.add_typer(module.app, name="")
+            # Command groups get their own namespace, others register at root
+            command_name = module_name if module_name in COMMAND_GROUPS else ""
+            app.add_typer(module.app, name=command_name)
         except Exception as e:
             console.print(f"[yellow]Warning: Failed to mount command app: {e}[/yellow]")
     
     _commands_registered = True
-
-
-@app.command()
-def interactive():
-    """
-    Start interactive REPL mode.
-    """
-    from click_repl import repl
-    from click import Context
-    from src.utils.repl_completer import create_context_aware_completer_for_repl
-    
-    _print_menu()
-
-    ctx = Context(typer.main.get_command(app))
-    
-    # Create context-aware completer that fixes parameter positioning
-    custom_completer = create_context_aware_completer_for_repl(ctx)
-    
-    prompt_kwargs = {
-        "message": _make_group_prompt,
-        "completer": custom_completer
-    }
-
-    try:
-        repl(ctx, prompt_kwargs=prompt_kwargs)
-    except (EOFError, KeyboardInterrupt):
-        # Save data directly via address_book instead of container.save_data()
-        # This works even when container is wrapped as DynamicContainer after wiring
-        book = container.address_book()
-        filename = container.config.storage.filename()
-        book.save_to_file(filename)
-        console.print("\n[bold green]Good bye![/bold green]")
 
 
 def run_interactive():

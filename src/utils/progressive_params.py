@@ -26,10 +26,13 @@ import types
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Optional, TypeVar
 
+import click
 import questionary
+import typer
 from rich.console import Console
 from typing import TYPE_CHECKING
 from dependency_injector.wiring import Provide, inject
+from src.utils.locations import get_catalog
 
 if TYPE_CHECKING:
     from src.services.note_service import NoteService
@@ -63,7 +66,108 @@ class ParameterProvider(ABC):
         pass
 
 
-class ContactSelector(ParameterProvider):
+class BaseSelector(ParameterProvider):
+    """
+    Base class for all selector providers with standardized behavior.
+    
+    Handles common patterns:
+    - None/Cancel option handling
+    - Operation cancelled messages
+    - Questionary select with consistent styling
+    - Empty choices validation
+    
+    Subclasses only need to implement get_choices() method.
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        required: bool = True,
+        cancel_message: str = "Operation cancelled.",
+        empty_message: Optional[str] = None,
+        show_cancel: bool = True
+    ):
+        """
+        Initialize BaseSelector.
+        
+        Args:
+            message: Prompt message for selection
+            required: Whether selection is required
+            cancel_message: Message to show when user cancels
+            empty_message: Message to show when no choices available
+            show_cancel: Whether to show Cancel option in menu
+        """
+        self.message = message
+        self.required = required
+        self.cancel_message = cancel_message
+        self.empty_message = empty_message
+        self.show_cancel = show_cancel
+        self._select_style = questionary.Style([
+            ('selected', 'fg:cyan bold'),
+            ('pointer', 'fg:cyan bold'),
+        ])
+    
+    @abstractmethod
+    def get_choices(self, current_value: Any, **context: Any) -> Optional[list[str]]:
+        """
+        Get list of choices for selection.
+        
+        Args:
+            current_value: Current parameter value
+            **context: Additional context from other parameters
+            
+        Returns:
+            List of choice strings, or None if choices cannot be retrieved
+        """
+        pass
+    
+    def get_value(self, param_name: str, current_value: Any, **context: Any) -> Optional[str]:
+        """
+        Get selection from user with standardized behavior.
+        
+        Args:
+            param_name: Name of the parameter
+            current_value: Current value (might be None)
+            **context: Additional context from other parameters
+            
+        Returns:
+            Selected value or None if cancelled
+        """
+        if current_value is not None:
+            return current_value
+        
+        # Get choices from subclass
+        choices = self.get_choices(current_value, **context)
+        
+        # Handle no choices available
+        if choices is None:
+            return None
+        
+        if not choices:
+            if self.empty_message:
+                console.print(f"[yellow]{self.empty_message}[/yellow]")
+            return None
+        
+        # Add Cancel option if needed
+        display_choices = choices + (["Cancel"] if self.show_cancel else [])
+        
+        # Show select menu
+        selected = questionary.select(
+            self.message,
+            choices=display_choices,
+            style=self._select_style
+        ).ask()
+        
+        # Handle cancellation
+        if selected is None or (self.show_cancel and selected == "Cancel"):
+            if self.required and self.cancel_message:
+                console.print(f"[yellow]{self.cancel_message}[/yellow]")
+            return None
+        
+        return selected
+
+
+class ContactSelector(BaseSelector):
     """
     Provides contact selection from available contacts.
     
@@ -84,41 +188,22 @@ class ContactSelector(ParameterProvider):
             message: Prompt message for selection
             service: NoteService instance (injected by container as singleton)
         """
-        self.message = message
+        super().__init__(
+            message=message,
+            empty_message="No contacts available. Please add contacts first."
+        )
         self.service = service
     
-    def get_value(self, param_name: str, current_value: Any, **context: Any) -> Optional[str]:
-        """Select a contact from available contacts."""
-        if current_value is not None:
-            return current_value
-        
-        # Check if contacts exist
+    def get_choices(self, current_value: Any, **context: Any) -> Optional[list[str]]:
+        """Get list of available contacts."""
         if not self.service.has_contacts():
-            console.print("[yellow]No contacts available. Please add contacts first.[/yellow]")
-            return None
+            return []
         
-        # Get contact list from service
         contacts = self.service.list_contacts()
-        contact_names = [name for name, _ in contacts]
-        
-        # Show select menu
-        selected = questionary.select(
-            self.message,
-            choices=contact_names + ["Cancel"],
-            style=questionary.Style([
-                ('selected', 'fg:cyan bold'),
-                ('pointer', 'fg:cyan bold'),
-            ])
-        ).ask()
-        
-        if selected is None or selected == "Cancel":
-            console.print("[yellow]Operation cancelled.[/yellow]")
-            return None
-        
-        return selected
+        return [name for name, _ in contacts]
 
 
-class NoteSelector(ParameterProvider):
+class NoteSelector(BaseSelector):
     """
     Provides note selection from a contact's notes.
     
@@ -139,28 +224,23 @@ class NoteSelector(ParameterProvider):
             message: Prompt message for selection
             service: NoteService instance (injected by container as singleton)
         """
-        self.message = message
+        super().__init__(message=message)
         self.service = service
     
-    def get_value(self, param_name: str, current_value: Any, **context: Any) -> Optional[str]:
-        """Select a note from contact's notes."""
-        if current_value is not None:
-            return current_value
-        
-        # Get contact_name from context
+    def get_choices(self, current_value: Any, **context: Any) -> Optional[list[str]]:
+        """Get list of notes for the contact."""
         contact_name = context.get('contact_name')
         if not contact_name:
             console.print("[red]Error: Contact must be selected first[/red]")
             return None
         
-        # Get notes for contact using service
         try:
             notes = self.service.list_notes(contact_name)
             if not notes:
                 console.print(f"[yellow]No notes found for {contact_name}.[/yellow]")
                 return None
             
-            note_names = [note.name for note in notes]
+            return [note.name for note in notes]
             
         except ValueError as e:
             console.print(f"[yellow]{e}[/yellow]")
@@ -168,22 +248,42 @@ class NoteSelector(ParameterProvider):
         except Exception as e:
             console.print(f"[red]Error loading notes: {e}[/red]")
             return None
+
+
+class GroupSelector(BaseSelector):
+    """
+    Provides group selection from available groups.
+    
+    Shows a select menu with arrow keys navigation.
+    Uses dependency injection for service access.
+    """
+    
+    @inject
+    def __init__(
+        self,
+        message: str = "Select group:",
+        service = Provide["Container.contact_service"]
+    ):
+        """
+        Initialize GroupSelector.
         
-        # Show select menu
-        selected = questionary.select(
-            self.message,
-            choices=note_names + ["Cancel"],
-            style=questionary.Style([
-                ('selected', 'fg:cyan bold'),
-                ('pointer', 'fg:cyan bold'),
-            ])
-        ).ask()
+        Args:
+            message: Prompt message for selection
+            service: ContactService instance (injected by container as singleton)
+        """
+        super().__init__(
+            message=message,
+            empty_message="No groups available. Please add groups first."
+        )
+        self.service = service
+    
+    def get_choices(self, current_value: Any, **context: Any) -> Optional[list[str]]:
+        """Get list of available groups."""
+        groups = self.service.list_groups()
+        if not groups:
+            return []
         
-        if selected is None or selected == "Cancel":
-            console.print("[yellow]Operation cancelled.[/yellow]")
-            return None
-        
-        return selected
+        return [group_id for group_id, _ in groups]
 
 
 class TextInput(ParameterProvider):
@@ -301,15 +401,13 @@ class EmailInput(ParameterProvider):
         
         # Use typer.prompt for reliable '@' symbol handling
         # This works correctly in PowerShell, CMD, and all other terminals
-        import typer
-        
         try:
             result = typer.prompt(
                 self.message,
                 default=self.default if self.default else None,
                 type=str
             )
-        except (EOFError, KeyboardInterrupt):
+        except (EOFError, KeyboardInterrupt, click.exceptions.Abort):
             # User cancelled (Ctrl+C or Ctrl+Z)
             console.print("[yellow]Operation cancelled.[/yellow]")
             return None
@@ -568,7 +666,7 @@ def progressive_params(
     return decorator
 
 
-class TagSelector(ParameterProvider):
+class TagSelector(BaseSelector):
     """
     Provides tag selection from a note's tags.
     
@@ -589,15 +687,11 @@ class TagSelector(ParameterProvider):
             message: Prompt message for selection
             service: NoteService instance (injected by container as singleton)
         """
-        self.message = message
+        super().__init__(message=message)
         self.service = service
     
-    def get_value(self, param_name: str, current_value: Any, **context: Any) -> Optional[str]:
-        """Select a tag from note's tags."""
-        if current_value is not None:
-            return current_value
-        
-        # Get contact_name and note_name from context
+    def get_choices(self, current_value: Any, **context: Any) -> Optional[list[str]]:
+        """Get list of tags for the note."""
         contact_name = context.get('contact_name')
         note_name = context.get('note_name')
         
@@ -609,12 +703,13 @@ class TagSelector(ParameterProvider):
             console.print("[red]Error: Note must be selected first[/red]")
             return None
         
-        # Get tags for note using service
         try:
             tags_list = self.service.note_list_tags(contact_name, note_name)
             if not tags_list:
                 console.print(f"[yellow]No tags found for note '{note_name}'.[/yellow]")
                 return None
+            
+            return tags_list
             
         except ValueError as e:
             console.print(f"[yellow]{e}[/yellow]")
@@ -622,29 +717,14 @@ class TagSelector(ParameterProvider):
         except Exception as e:
             console.print(f"[red]Error loading tags: {e}[/red]")
             return None
-        
-        # Show select menu
-        selected = questionary.select(
-            self.message,
-            choices=tags_list + ["Cancel"],
-            style=questionary.Style([
-                ('selected', 'fg:cyan bold'),
-                ('pointer', 'fg:cyan bold'),
-            ])
-        ).ask()
-        
-        if selected is None or selected == "Cancel":
-            console.print("[yellow]Operation cancelled.[/yellow]")
-            return None
-        
-        return selected
 
 
-class SelectInput(ParameterProvider):
+class SelectInput(BaseSelector):
     """
     Provides selection from a list of choices.
     
     Generic selector that can be used for any enum-like selection.
+    Supports (value, display_text) tuples for mapping display to actual values.
     """
     
     def __init__(
@@ -653,49 +733,68 @@ class SelectInput(ParameterProvider):
         choices: list[tuple[str, str]],  # List of (value, display_text) tuples
         required: bool = True
     ):
-        self.message = message
+        """
+        Initialize SelectInput.
+        
+        Args:
+            message: Prompt message for selection
+            choices: List of (value, display_text) tuples
+            required: Whether selection is required
+        """
+        super().__init__(message=message, required=required)
         self.choices = choices
-        self.required = required
+        self._value_map = {display: value for value, display in choices}
+    
+    def get_choices(self, current_value: Any, **context: Any) -> Optional[list[str]]:
+        """Get display choices."""
+        return [display for value, display in self.choices]
     
     def get_value(self, param_name: str, current_value: Any, **context: Any) -> Optional[str]:
-        """Select from a list of choices."""
+        """
+        Select from choices with display-to-value mapping.
+        
+        Overrides base implementation to handle value mapping.
+        """
         if current_value is not None:
             return current_value
         
-        # Build display choices
-        display_choices = [display for value, display in self.choices]
-        display_choices.append("Cancel")
+        # Get choices
+        display_choices = self.get_choices(current_value, **context)
+        if not display_choices:
+            if not self.required:
+                return self.choices[0][0] if self.choices else None
+            return None
+        
+        # Add Cancel option if needed
+        display_choices_with_cancel = display_choices + (["Cancel"] if self.show_cancel else [])
         
         # Show select menu
         selected_display = questionary.select(
             self.message,
-            choices=display_choices,
-            style=questionary.Style([
-                ('selected', 'fg:cyan bold'),
-                ('pointer', 'fg:cyan bold'),
-            ])
+            choices=display_choices_with_cancel,
+            style=self._select_style
         ).ask()
         
-        if selected_display is None or selected_display == "Cancel":
+        # Handle cancellation
+        if selected_display is None or (self.show_cancel and selected_display == "Cancel"):
             if self.required:
-                console.print("[yellow]Operation cancelled.[/yellow]")
+                if self.cancel_message:
+                    console.print(f"[yellow]{self.cancel_message}[/yellow]")
                 return None
             else:
+                # For optional selections, return first choice as default
                 return self.choices[0][0] if self.choices else None
         
-        # Find the value for the selected display text
-        for value, display in self.choices:
-            if display == selected_display:
-                return value
-        
-        return None
+        # Map display text back to actual value
+        return self._value_map.get(selected_display)
 
 
-class CountrySelector(ParameterProvider):
+class CountrySelector(BaseSelector):
     """
-    Provides country selection from locations catalog.
+    Provides country selection from locations catalog with ability to add new countries.
     
     Shows a select menu with countries from the catalog.
+    If country is not found in catalog, offers to add it.
     """
     
     def __init__(self, message: str = "Select country:"):
@@ -705,31 +804,126 @@ class CountrySelector(ParameterProvider):
         Args:
             message: Prompt message for selection
         """
-        self.message = message
+        super().__init__(message=message, required=True)
+    
+    def get_choices(self, current_value: Any, **context: Any) -> Optional[list[str]]:
+        """
+        Get list of countries with special handling for adding new countries.
+        
+        Returns display strings for countries, including special "[Add new country]" option.
+        """
+        catalog = get_catalog()
+        countries = catalog.get_countries(include_user=True)
+        
+        # Store catalog for later use in get_value
+        self._catalog = catalog
+        self._countries = countries
+        
+        # Build display choices with markers
+        display_choices = []
+        for code, name in countries:
+            marker = " (user)" if catalog.is_user_country(code) else ""
+            display_choices.append(f"{code} - {name}{marker}")
+        
+        # Add "Add new country" option
+        display_choices.append("[Add new country]")
+        
+        return display_choices
     
     def get_value(self, param_name: str, current_value: Any, **context: Any) -> Optional[str]:
-        """Select a country from catalog."""
+        """
+        Select country or add new one.
+        
+        Overrides base implementation to handle "Add new country" flow.
+        """
         if current_value is not None:
             return current_value
         
-        from src.utils.locations import get_catalog
-        
-        catalog = get_catalog()
-        countries = catalog.get_countries()
-        
-        if not countries:
-            console.print("[yellow]No countries available in catalog.[/yellow]")
+        # Use base selector to get choice
+        display_choices = self.get_choices(current_value, **context)
+        if display_choices is None:
             return None
         
-        # Build choices for SelectInput: (country_code, "Code - Name")
-        choices = [(code, f"{code} - {name}") for code, name in countries]
+        # Show select menu (without Cancel since we handle it ourselves)
+        selected_display = questionary.select(
+            self.message,
+            choices=display_choices + ["Cancel"],
+            style=self._select_style
+        ).ask()
         
-        # Use SelectInput for selection
-        selector = SelectInput(self.message, choices, required=True)
-        return selector.get_value(param_name, current_value, **context)
+        # Handle cancellation
+        if selected_display is None or selected_display == "Cancel":
+            if self.cancel_message:
+                console.print(f"[yellow]{self.cancel_message}[/yellow]")
+            return None
+        
+        # Handle "Add new country" option
+        if selected_display == "[Add new country]":
+            return self._handle_add_new_country(param_name, context)
+        
+        # Extract actual country code (remove " - Name" and marker like " (user)")
+        country_code = selected_display.split(" - ")[0]
+        return country_code
+    
+    def _handle_add_new_country(self, param_name: str, context: dict) -> Optional[str]:
+        """Handle the flow for adding a new country."""
+        # Prompt for country code
+        code_input = questionary.text(
+            "Enter country code (2-3 letters, e.g., 'UA', 'PL', 'US'):",
+            validate=lambda text: (
+                len(text.strip()) >= 2 and len(text.strip()) <= 3 and text.strip().isalpha()
+            ) or "Country code must be 2-3 letters"
+        ).ask()
+        
+        if code_input is None:
+            console.print("[yellow]Operation cancelled.[/yellow]")
+            return None
+        
+        country_code = code_input.strip().upper()
+        
+        # Check if country already exists
+        if self._catalog.has_country(country_code):
+            existing_name = self._catalog.get_country_name(country_code)
+            console.print(f"[yellow]Country '{country_code}' already exists as '{existing_name}'[/yellow]")
+            return country_code
+        
+        # Prompt for country name
+        name_input = questionary.text(
+            f"Enter country name for '{country_code}':",
+            validate=lambda text: len(text.strip()) > 0 or "Country name cannot be empty"
+        ).ask()
+        
+        if name_input is None:
+            console.print("[yellow]Operation cancelled.[/yellow]")
+            return None
+        
+        country_name = name_input.strip()
+        
+        # Offer to add new country
+        add_confirm = questionary.confirm(
+            f"Add '{country_code}' ({country_name}) as a new country?",
+            default=True
+        ).ask()
+        
+        if add_confirm:
+            try:
+                self._catalog.add_user_country(country_code, country_name)
+                console.print(f"[bold green]Country '{country_code}' ({country_name}) added to catalog[/bold green]")
+                return country_code
+            except ValueError as e:
+                console.print(f"[bold red]Error:[/bold red] {e}")
+                # Ask to try again
+                if questionary.confirm("Try entering a different country?", default=True).ask():
+                    return self.get_value(param_name, None, **context)
+                return None
+        else:
+            # User doesn't want to add - ask to try again
+            if questionary.confirm("Select a different country?", default=True).ask():
+                return self.get_value(param_name, None, **context)
+            return None
 
 
-class CitySelector(ParameterProvider):
+class CitySelector(BaseSelector):
     """
     Provides city selection from locations catalog with ability to add new cities.
     
@@ -744,20 +938,19 @@ class CitySelector(ParameterProvider):
         Args:
             message: Prompt message for selection
         """
-        self.message = message
+        super().__init__(message=message, required=True)
     
-    def get_value(self, param_name: str, current_value: Any, **context: Any) -> Optional[str]:
-        """Select a city from catalog or add new one."""
-        if current_value is not None:
-            return current_value
+    def get_choices(self, current_value: Any, **context: Any) -> Optional[list[str]]:
+        """
+        Get list of cities with special handling for context validation.
         
+        Returns display strings for cities, including special "[Add new city]" option.
+        """
         # Get country_code from context
         country_code = context.get('country_code') or context.get('country')
         if not country_code:
             console.print("[red]Error: Country must be selected first[/red]")
             return None
-        
-        from src.utils.locations import get_catalog
         
         catalog = get_catalog()
         
@@ -766,61 +959,99 @@ class CitySelector(ParameterProvider):
             console.print(f"[red]Error: Country '{country_code}' not found in catalog[/red]")
             return None
         
-        country_name = catalog.get_country_name(country_code) or country_code
         cities = catalog.get_cities(country_code, include_user=True)
         
-        # Build choices: (city_name, display_text) + "Add new city" option
-        choices = []
+        # Store catalog and country info for later use in get_value
+        self._catalog = catalog
+        self._country_code = country_code
+        self._cities = cities
+        
+        # Build display choices with markers
+        display_choices = []
         for city in cities:
             marker = " (user)" if catalog.is_user_city(country_code, city) else ""
-            choices.append((city, f"{city}{marker}"))
+            display_choices.append(f"{city}{marker}")
         
         # Add "Add new city" option
-        choices.append(("__ADD_NEW__", "[Add new city]"))
+        display_choices.append("[Add new city]")
         
-        # Use SelectInput for selection
-        selector = SelectInput(self.message, choices, required=True)
-        selected = selector.get_value(param_name, current_value, **context)
+        return display_choices
+    
+    def get_value(self, param_name: str, current_value: Any, **context: Any) -> Optional[str]:
+        """
+        Select city or add new one.
         
-        if selected == "__ADD_NEW__":
-            # User wants to add new city - prompt for city name
-            city_input = questionary.text(
-                f"Enter city name for {country_name}:",
-                validate=lambda text: len(text.strip()) > 0 or "City name cannot be empty"
-            ).ask()
-            
-            if city_input is None:
-                console.print("[yellow]Operation cancelled.[/yellow]")
-                return None
-            
-            city_name = city_input.strip()
-            
-            # Check if city already exists
-            if city_name in cities:
-                console.print(f"[yellow]City '{city_name}' already exists in catalog[/yellow]")
+        Overrides base implementation to handle "Add new city" flow.
+        """
+        if current_value is not None:
+            return current_value
+        
+        # Use base selector to get choice
+        display_choices = self.get_choices(current_value, **context)
+        if display_choices is None:
+            return None
+        
+        # Show select menu (without Cancel since we handle it ourselves)
+        selected_display = questionary.select(
+            self.message,
+            choices=display_choices + ["Cancel"],
+            style=self._select_style
+        ).ask()
+        
+        # Handle cancellation
+        if selected_display is None or selected_display == "Cancel":
+            if self.cancel_message:
+                console.print(f"[yellow]{self.cancel_message}[/yellow]")
+            return None
+        
+        # Handle "Add new city" option
+        if selected_display == "[Add new city]":
+            return self._handle_add_new_city(param_name, context)
+        
+        # Extract actual city name (remove marker like " (user)")
+        city_name = selected_display.split(" (user)")[0]
+        return city_name
+    
+    def _handle_add_new_city(self, param_name: str, context: dict) -> Optional[str]:
+        """Handle the flow for adding a new city."""
+        country_name = self._catalog.get_country_name(self._country_code) or self._country_code
+        
+        # Prompt for city name
+        city_input = questionary.text(
+            f"Enter city name for {country_name}:",
+            validate=lambda text: len(text.strip()) > 0 or "City name cannot be empty"
+        ).ask()
+        
+        if city_input is None:
+            console.print("[yellow]Operation cancelled.[/yellow]")
+            return None
+        
+        city_name = city_input.strip()
+        
+        # Check if city already exists
+        if city_name in self._cities:
+            console.print(f"[yellow]City '{city_name}' already exists in catalog[/yellow]")
+            return city_name
+        
+        # Offer to add new city
+        add_confirm = questionary.confirm(
+            f"Add '{city_name}' as a new city for {country_name}?",
+            default=True
+        ).ask()
+        
+        if add_confirm:
+            try:
+                self._catalog.add_user_city(self._country_code, city_name)
+                console.print(f"[bold green]City '{city_name}' added to catalog[/bold green]")
                 return city_name
-            
-            # City not found - offer to add it (variant A)
-            add_confirm = questionary.confirm(
-                f"Add '{city_name}' as a new city for {country_name}?",
-                default=True
-            ).ask()
-            
-            if add_confirm:
-                try:
-                    catalog.add_user_city(country_code, city_name)
-                    console.print(f"[bold green]City '{city_name}' added to catalog[/bold green]")
-                    return city_name
-                except ValueError as e:
-                    console.print(f"[bold red]Error:[/bold red] {e}")
-                    # Ask to try again
-                    if questionary.confirm("Try entering a different city name?", default=True).ask():
-                        return self.get_value(param_name, None, **context)
-                    return None
-            else:
-                # User doesn't want to add - ask to try again
-                if questionary.confirm("Enter a different city name?", default=True).ask():
+            except ValueError as e:
+                console.print(f"[bold red]Error:[/bold red] {e}")
+                # Ask to try again
+                if questionary.confirm("Try entering a different city name?", default=True).ask():
                     return self.get_value(param_name, None, **context)
                 return None
-        
-        return selected
+        else:
+            # User doesn't want to add - ask to try again
+            if questionary.confirm("Enter a different city name?", default=True).ask():
+                return self.get_value(param_name, None, **context)
+            return None

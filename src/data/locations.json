@@ -160,5 +160,6 @@
       ]
     }
   },
-  "user_cities": {}
+  "user_cities": {},
+  "user_countries": {}
 }

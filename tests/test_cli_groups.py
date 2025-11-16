@@ -35,13 +35,13 @@ class TestGroupsCLI:
         mock_service.get_current_group.return_value = "personal"
 
         with container.contact_service.override(mock_service):
-            r = runner.invoke(app, ["group-list"])
+            r = runner.invoke(app, ["group", "list"])
         assert r.exit_code == 0
         assert "personal" in r.stdout
 
     def test_group_add_creates(self, mock_service):
         with container.contact_service.override(mock_service):
-            r = runner.invoke(app, ["group-add", "work"])
+            r = runner.invoke(app, ["group", "add", "work"])
         assert r.exit_code == 0
         assert "Group 'work' created" in r.stdout
         mock_service.add_group.assert_called_once_with("work")
@@ -49,7 +49,7 @@ class TestGroupsCLI:
 
     def test_group_use_switch_success(self, mock_service):
         with container.contact_service.override(mock_service):
-            r = runner.invoke(app, ["group-use", "work"])
+            r = runner.invoke(app, ["group", "use", "work"])
         assert r.exit_code == 0
         assert "Current group set to 'work'" in r.stdout
         mock_service.set_current_group.assert_called_once_with("work")
@@ -59,7 +59,7 @@ class TestGroupsCLI:
         mock_service.rename_group.return_value = "Group 'work' renamed to 'team'."
 
         with container.contact_service.override(mock_service):
-            r = runner.invoke(app, ["group-rename", "work", "team"])
+            r = runner.invoke(app, ["group", "rename", "work", "team"])
 
         assert r.exit_code == 0, r.stdout
         mock_service.rename_group.assert_called_once_with("work", "team")
@@ -70,7 +70,7 @@ class TestGroupsCLI:
         mock_service.remove_group.return_value = "Group 'work' removed."
 
         with container.contact_service.override(mock_service):
-            r = runner.invoke(app, ["group-remove", "work"])
+            r = runner.invoke(app, ["group", "remove", "work"])
 
         assert r.exit_code == 0, r.stdout
         mock_service.remove_group.assert_called_once_with("work", force=False)
@@ -81,7 +81,7 @@ class TestGroupsCLI:
         mock_service.remove_group.return_value = "Group 'work' and its contacts removed."
 
         with container.contact_service.override(mock_service):
-            r = runner.invoke(app, ["group-remove", "work", "--force"])
+            r = runner.invoke(app, ["group", "remove", "work", "--force"])
 
         assert r.exit_code == 0, r.stdout
         mock_service.remove_group.assert_called_once_with("work", force=True)

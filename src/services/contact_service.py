@@ -90,7 +90,7 @@ class ContactService:
         group_id: str | None = None,
     ) -> str:
         """
-        Add a new contact or update existing contact within a group.
+        Add a new contact. Fails if contact already exists.
 
         Args:
             name: Contact name
@@ -99,6 +99,9 @@ class ContactService:
 
         Returns:
             Success message
+            
+        Raises:
+            ValueError: If contact already exists
         """
         gid = group_id or self.address_book.current_group_id
 
@@ -106,15 +109,71 @@ class ContactService:
         if not self.address_book.has_group(gid):            
             self.address_book.add_group(gid)
 
+        # Check if contact already exists
         record = self.address_book.find(name, group_id=gid)
-        message = "Contact updated."
-        if record is None:
-            record = Record(name, group_id=gid)
-            self.address_book.add_record(record)
-            message = "Contact added."
+        if record is not None:
+            raise ValueError(f"Contact '{name}' already exists. Use 'contact phone add' to add more phone numbers.")
+        
+        # Create new contact
+        record = Record(name, group_id=gid)
         if phone:
             record.add_phone(phone)
-        return message
+        self.address_book.add_record(record)
+        return f"Contact '{name}' added successfully."
+    
+    def edit_contact_name(self, old_name: str, new_name: str) -> str:
+        """
+        Edit a contact's name.
+        
+        Args:
+            old_name: Current contact name
+            new_name: New contact name
+            
+        Returns:
+            Success message
+            
+        Raises:
+            ValueError: If old contact not found or new name already exists
+        """
+        # Check if old contact exists
+        old_record = self.address_book.find(old_name)
+        if old_record is None:
+            raise ValueError(f"Contact '{old_name}' not found.")
+        
+        # Check if new name already exists
+        new_record = self.address_book.find(new_name)
+        if new_record is not None:
+            raise ValueError(f"Contact '{new_name}' already exists.")
+        
+        # Get all data from old record
+        group_id = old_record.group_id
+        phones = [str(phone) for phone in old_record.phones]
+        birthday = old_record.birthday
+        tags = old_record.tags.as_list() if old_record.tags else []
+        email = str(old_record.email) if old_record.email else None
+        address = old_record.address
+        notes = old_record.notes
+        
+        # Delete old contact
+        self.address_book.delete(old_name)
+        
+        # Create new contact with same data
+        new_record = Record(new_name, group_id=group_id)
+        for phone in phones:
+            new_record.add_phone(phone)
+        if birthday:
+            new_record.add_birthday(str(birthday))
+        for tag in tags:
+            new_record.add_tag(tag)
+        if email:
+            new_record.add_email(email)
+        if address:
+            new_record.address = address
+        new_record.notes = notes
+        
+        self.address_book.add_record(new_record)
+        
+        return f"Contact renamed from '{old_name}' to '{new_name}'."
     
     def delete_contact(self, name: str) -> str:
         """Delete a contact from the address book."""
@@ -124,6 +183,24 @@ class ContactService:
             return f"Contact '{name}' deleted successfully"
         except KeyError:
             raise ValueError(f"Contact '{name}' not found")
+    
+    def get_contact(self, name: str) -> Record:
+        """
+        Get full contact record.
+        
+        Args:
+            name: Contact name
+            
+        Returns:
+            Contact record
+            
+        Raises:
+            ValueError: If contact not found
+        """
+        record = self.address_book.find(name)
+        if record is None:
+            raise ValueError(f"Contact '{name}' not found.")
+        return record
 
 
     def change_contact(self, name: str, old_phone: str, new_phone: str) -> str:
@@ -169,6 +246,30 @@ class ContactService:
             return f"No phones for contact '{name}'."
 
         return "; ".join(p.display_value for p in record.phones)
+    
+    def remove_phone(self, name: str, phone: str) -> str:
+        """
+        Remove a phone number from a contact.
+        
+        Args:
+            name: Contact name
+            phone: Phone number to remove
+            
+        Returns:
+            Success message
+            
+        Raises:
+            ValueError: If contact not found, phone not found, or trying to remove last phone
+        """
+        record = self.address_book.find(name)
+        if record is None:
+            raise ValueError(f"Contact '{name}' not found.")
+        
+        if len(record.phones) <= 1:
+            raise ValueError("Cannot remove the last phone number. Contact must have at least one phone.")
+        
+        record.remove_phone(phone)
+        return f"Phone number '{phone}' removed from contact '{name}'."
 
     def get_all_contacts(
         self,
