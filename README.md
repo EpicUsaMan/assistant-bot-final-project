@@ -26,28 +26,30 @@ eval "$(_ASSISTANT_BOT_COMPLETE=zsh_source python src/main.py)"
 
 ### Interactive Mode (REPL)
 
+Interactive mode starts automatically when you run without arguments:
+
 ```bash
 python src/main.py
 
-> add John 1234567890
-> add-birthday John 15.05.1990
-> email add John john@example.com
-> address set John UA Kyiv "Main St 1"
+> contact add John 1234567890
+> contact birthday add John 15.05.1990
+> contact email add John john@example.com
+> contact address set John UA Kyiv "Main St 1"
 > notes add John "Meeting" "Discuss Q4 targets"
-> all
+> contact list
 > exit
 ```
 
 ### CLI Mode
 
 ```bash
-python src/main.py add "John Doe" 1234567890
-python src/main.py add-birthday "John Doe" 15.05.1990
-python src/main.py all --sort-by name
+python src/main.py contact add "John Doe" 1234567890
+python src/main.py contact birthday add "John Doe" 15.05.1990
+python src/main.py contact list --sort-by name
 
 # Birthday commands
-python src/main.py add-birthday "John Doe" 15.05.1990
-python src/main.py birthdays
+python src/main.py contact birthday add "John Doe" 15.05.1990
+python src/main.py contact birthday upcoming
 ```
 
 ## Features
@@ -66,42 +68,72 @@ python src/main.py birthdays
 ### Contact Management
 | Command | Arguments | Description |
 |---------|-----------|-------------|
-| `add` | name, phone | Add a new contact or add phone to existing contact |
-| `change` | name, old_phone, new_phone | Change an existing phone number |
-| `phone` | name | Show all phone numbers for a contact |
-| `all` | `[--sort-by MODE]` | Show all contacts (sort by: name, phone, birthday, tag_count, tag_name) |
-| `add-birthday` | name, birthday (DD.MM.YYYY) | Add a birthday date to a contact |
-| `show-birthday` | name | Show the birthday date for a contact |
-| `birthdays` | None | Show all upcoming birthdays for the next week |
-| `tag-add` | name, tag | Add a tag to a contact |
-| `tag-remove` | name, tag | Remove a tag from a contact |
-| `tag-list` | name | List tags of a contact |
-| `tag-clear` | name | Clear all tags for a contact |
-| `find-by-tags` | "t1,t2" | Find contacts that have **ALL** tags (AND) |
-| `find-by-tags-any` | "t1,t2" | Find contacts that have **ANY** tag (OR) |
-| `group-list` | None | Show all groups with contact counts |
-| `group-add` | `<group_id>` | Create a new group |
-| `group-use` | `<group_id>` | Switch active group |
+| `contact add` | name, phone | Add a new contact or add phone to existing contact |
+| `contact remove` | name | Remove a contact from the address book |
+| `contact show` | name | Show detailed information about a contact |
+| `contact list` | `[--sort-by MODE] [--group GROUP]` | List all contacts (sort by: name, phone, birthday, tag_count, tag_name) |
 
-### Email & Address
+#### Phone Operations
 | Command | Arguments | Description |
 |---------|-----------|-------------|
-| `email add` | contact_name, email | Add or update email address |
-| `email remove` | contact_name | Remove email address |
-| `address set` | contact_name, country, city, address_line | Set address with interactive selection |
-| `address remove` | contact_name | Remove address |
+| `contact phone add` | name, phone | Add a phone number to a contact |
+| `contact phone remove` | name, phone | Remove a phone number (must keep at least one) |
+| `contact phone change` | name, old_phone, new_phone | Change an existing phone number |
+| `contact phone list` | name | Show all phone numbers for a contact |
 
-### Notes
+#### Birthday Operations
+| Command | Arguments | Description |
+|---------|-----------|-------------|
+| `contact birthday add` | name, birthday (DD.MM.YYYY) | Add a birthday date to a contact |
+| `contact birthday show` | name | Show the birthday date for a contact |
+| `contact birthday upcoming` | None | Show all upcoming birthdays for the next week |
+
+#### Tag Operations
+| Command | Arguments | Description |
+|---------|-----------|-------------|
+| `contact tag add` | name, tags... | Add one or more tags to a contact |
+| `contact tag remove` | name, tag | Remove a tag from a contact |
+| `contact tag list` | name | List tags of a contact |
+| `contact tag clear` | name | Clear all tags for a contact |
+
+#### Email Operations
+| Command | Arguments | Description |
+|---------|-----------|-------------|
+| `contact email add` | contact_name, email | Add or update email address |
+| `contact email remove` | contact_name | Remove email address |
+
+#### Address Operations
+| Command | Arguments | Description |
+|---------|-----------|-------------|
+| `contact address set` | contact_name, country, city, address_line | Set address with interactive selection |
+| `contact address remove` | contact_name | Remove address |
+
+### Notes Management
 | Command | Arguments | Description |
 |---------|-----------|-------------|
 | `notes add` | contact_name, note_name, content | Add a text note |
 | `notes edit` | contact_name, note_name, content | Edit a note |
-| `notes delete` | contact_name, note_name | Delete a note |
+| `notes remove` | contact_name, note_name | Remove a note |
 | `notes list` | contact_name | List all notes for a contact |
 | `notes show` | contact_name, note_name | Show full content of a note |
-| `notes tag-add` | contact_name, note_name, tags... | Add tags to a note |
-| `notes tag-remove` | contact_name, note_name, tag | Remove a tag from a note |
-| `notes tag-list` | contact_name, note_name | List tags for a note |
+
+#### Note Tag Operations
+| Command | Arguments | Description |
+|---------|-----------|-------------|
+| `notes tag add` | contact_name, note_name, tags... | Add tags to a note |
+| `notes tag remove` | contact_name, note_name, tag | Remove a tag from a note |
+| `notes tag list` | contact_name, note_name | List tags for a note |
+| `notes tag clear` | contact_name, note_name | Clear all tags from a note |
+
+### Groups
+| Command | Arguments | Description |
+|---------|-----------|-------------|
+| `group list` | None | Show all groups with contact counts |
+| `group add` | `<group_id>` | Create a new group |
+| `group use` | `<group_id>` | Switch active group |
+| `group show` | `<group_id>` | Show details about a specific group |
+| `group rename` | `<old_id>` `<new_id>` | Rename a group |
+| `group remove` | `<group_id>` `[--force]` | Remove a group (optionally with contacts) |
 
 ### Search
 | Command | Arguments | Description |

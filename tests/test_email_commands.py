@@ -8,10 +8,10 @@ from unittest.mock import Mock, patch
 from typer.testing import CliRunner
 import click
 
-from src.commands.email import (
-    app,
-    _add_email_impl,
-    _remove_email_impl,
+from src.commands.contact import (
+    email_app as app,
+    _email_add_impl as _add_email_impl,
+    _email_remove_impl as _remove_email_impl,
 )
 from src.main import app as main_app, container
 
@@ -149,7 +149,7 @@ class TestEmailCommandsCLI:
         mock_contact_service.add_email.return_value = "Email added to John."
         
         with container.contact_service.override(mock_contact_service):
-            result = runner.invoke(main_app, ["email", "add", "John", "john@example.com"])
+            result = runner.invoke(main_app, ["contact", "email", "add", "John", "john@example.com"])
         
         assert result.exit_code == 0
         assert "added" in result.stdout.lower()

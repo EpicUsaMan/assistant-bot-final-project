@@ -34,7 +34,7 @@ class TestTagsCRUD:
     def test_tag_add_single(self, mock_service):
         mock_service.add_tag.return_value = "Tag 'ml' added to Pavlo."
         with container.contact_service.override(mock_service):
-            r = runner.invoke(app, ["tag-add", "Pavlo", "ml"])
+            r = runner.invoke(app, ["contact", "tag", "add", "Pavlo", "ml"])
         assert r.exit_code == 0
         assert "added" in r.stdout.lower()
         mock_service.add_tag.assert_called_once_with("Pavlo", "ml")
@@ -47,7 +47,7 @@ class TestTagsCRUD:
             "Tag 'data,science' added to Pavlo.",
         ]
         with container.contact_service.override(mock_service):
-            r = runner.invoke(app, ["tag-add", "Pavlo", "ml", '"data,science"'])
+            r = runner.invoke(app, ["contact", "tag", "add", "Pavlo", "ml", '"data,science"'])
         assert r.exit_code == 0, r.output
         out = r.stdout.lower()
         assert "ml" in out and "data,science" in out
@@ -59,7 +59,7 @@ class TestTagsCRUD:
     def test_tag_list(self, mock_service):
         mock_service.list_tags.return_value = ["ml", "data,science"]
         with container.contact_service.override(mock_service):
-            r = runner.invoke(app, ["tag-list", "Pavlo"])
+            r = runner.invoke(app, ["contact", "tag", "list", "Pavlo"])
         assert r.exit_code == 0
         assert "ml" in r.stdout and "data,science" in r.stdout
         mock_service.list_tags.assert_called_once_with("Pavlo")
@@ -67,7 +67,7 @@ class TestTagsCRUD:
     def test_tag_remove(self, mock_service):
         mock_service.remove_tag.return_value = "Tag 'ml' removed from Pavlo."
         with container.contact_service.override(mock_service):
-            r = runner.invoke(app, ["tag-remove", "Pavlo", "ml"])
+            r = runner.invoke(app, ["contact", "tag", "remove", "Pavlo", "ml"])
         assert r.exit_code == 0
         assert "removed" in r.stdout.lower()
         mock_service.remove_tag.assert_called_once_with("Pavlo", "ml")
@@ -76,7 +76,7 @@ class TestTagsCRUD:
     def test_tag_clear(self, mock_service):
         mock_service.clear_tags.return_value = "All tags cleared for Pavlo."
         with container.contact_service.override(mock_service):
-            r = runner.invoke(app, ["tag-clear", "Pavlo"])
+            r = runner.invoke(app, ["contact", "tag", "clear", "Pavlo"])
         assert r.exit_code == 0
         assert "cleared" in r.stdout.lower()
         mock_service.clear_tags.assert_called_once_with("Pavlo")

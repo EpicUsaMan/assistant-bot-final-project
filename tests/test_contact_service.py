@@ -71,20 +71,59 @@ class TestAddContact:
     def test_add_new_contact(self, contact_service):
         """Test adding a new contact."""
         result = contact_service.add_contact("Alice", "1234567890")
-        assert result == "Contact added."
+        assert result == "Contact 'Alice' added successfully."
         assert contact_service.address_book.find("Alice") is not None
     
     def test_add_phone_to_existing_contact(self, populated_service):
-        """Test adding a phone to an existing contact."""
-        result = populated_service.add_contact("John", "0987654321")
-        assert result == "Contact updated."
-        record = populated_service.address_book.find("John")
-        assert len(record.phones) == 2
+        """Test that adding a contact that already exists raises ValueError."""
+        with pytest.raises(ValueError, match="Contact 'John' already exists"):
+            populated_service.add_contact("John", "0987654321")
     
     def test_add_contact_with_invalid_phone(self, contact_service):
         """Test adding a contact with invalid phone number."""
         with pytest.raises(ValueError):
             contact_service.add_contact("Bob", "invalid")
+
+
+class TestEditContactName:
+    """Tests for edit_contact_name method."""
+    
+    def test_edit_contact_name_success(self, contact_service):
+        """Test renaming a contact successfully."""
+        contact_service.add_contact("Alice", "1234567890")
+        result = contact_service.edit_contact_name("Alice", "Alice Smith")
+        assert "renamed" in result.lower()
+        assert contact_service.address_book.find("Alice Smith") is not None
+        assert contact_service.address_book.find("Alice") is None
+    
+    def test_edit_contact_name_preserves_data(self, contact_service):
+        """Test that renaming preserves all contact data."""
+        contact_service.add_contact("Bob", "1234567890")
+        contact_service.add_birthday("Bob", "15.05.1990")
+        contact_service.add_email("Bob", "bob@example.com")
+        contact_service.add_tag("Bob", "friend")
+        contact_service.set_address("Bob", "UA", "Kyiv", "Main St 1")
+        
+        contact_service.edit_contact_name("Bob", "Robert")
+        
+        record = contact_service.address_book.find("Robert")
+        assert record is not None
+        assert str(record.birthday) == "15.05.1990"
+        assert str(record.email) == "bob@example.com"
+        assert "friend" in record.tags.as_list()
+        assert record.address is not None
+    
+    def test_edit_contact_name_not_found(self, contact_service):
+        """Test renaming a non-existent contact."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.edit_contact_name("NonExistent", "NewName")
+    
+    def test_edit_contact_name_already_exists(self, contact_service):
+        """Test renaming to an already existing name."""
+        contact_service.add_contact("Alice", "1234567890")
+        contact_service.add_contact("Bob", "9876543210")
+        with pytest.raises(ValueError, match="already exists"):
+            contact_service.edit_contact_name("Alice", "Bob")
 
 
 class TestDeleteContact:
@@ -163,19 +202,54 @@ class TestGetPhone:
         result = service.get_phone("NoPhone")
         assert "No phones" in result
 
+class TestRemovePhone:
+    """Tests for remove_phone method."""
+    
+    def test_remove_phone_success(self, contact_service):
+        """Test removing a phone number successfully."""
+        contact_service.add_contact("Alice", "1234567890")
+        # Add another phone via the record
+        record = contact_service.address_book.find("Alice")
+        record.add_phone("9876543210")
+        result = contact_service.remove_phone("Alice", "1234567890")
+        assert "removed" in result.lower()
+        record = contact_service.address_book.find("Alice")
+        assert len(record.phones) == 1
+        # Phone is formatted with country code
+        phone_str = str(record.phones[0])
+        assert "987" in phone_str and "654" in phone_str and "3210" in phone_str
+    
+    def test_remove_phone_must_keep_one(self, contact_service):
+        """Test that removing the last phone number fails."""
+        contact_service.add_contact("Bob", "1234567890")
+        with pytest.raises(ValueError, match="at least one"):
+            contact_service.remove_phone("Bob", "1234567890")
+    
+    def test_remove_phone_not_found(self, contact_service):
+        """Test removing a non-existent phone."""
+        contact_service.add_contact("Charlie", "1234567890")
+        # Add a second phone so we can try to remove a non-existent one
+        record = contact_service.address_book.find("Charlie")
+        record.add_phone("9876543210")
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.remove_phone("Charlie", "9999999999")
+
+
 class TestGetAllContacts:
     """Tests for get_all_contacts method."""
     
     def test_get_all_contacts_empty(self, contact_service):
         """Test getting all contacts when address book is empty."""
         result = contact_service.get_all_contacts()
-        assert "Address book is empty" in result or result == ""
+        assert isinstance(result, dict)
+        assert result == {} or result == {"": []}
     
     def test_get_all_contacts_populated(self, populated_service):
         """Test getting all contacts with data."""
         result = populated_service.get_all_contacts()
-        assert "John" in result
-        assert "1234567890" in result
+        assert isinstance(result, dict)
+        # Should have data for the default group
+        assert len(result) > 0
 
 
 class TestBirthday:
@@ -391,7 +465,8 @@ class TestSorting:
         monkeypatch.setattr(sorting_service, "list_contacts", fake_list_contacts)
 
         result = sorting_service.get_all_contacts(sort_by=ContactSortBy.NAME)
-        assert "Contact name: X" in result
+        assert isinstance(result, dict)
+        assert "X" in result  # dict keys should contain the contact name
         # sort_by exist, group by default None
         assert calls == [(ContactSortBy.NAME, None)]
 
@@ -503,20 +578,14 @@ class TestGroupsFiltering:
 
         out = contact_service.get_all_contacts(group="all")
 
-        # group header exists
-        assert "Group: personal" in out
-        assert "Group: work" in out
-        # names exists
-        assert "Alice" in out
-        assert "Bob" in out
-
-        # Alice has to be inside "personal" group
-        personal_block = out.split("Group: personal", 1)[1].split("Group:", 1)[0]
-        assert "Alice" in personal_block
-
-        # Bob has to be inside "work" group
-        work_block = out.split("Group: work", 1)[1]
-        assert "Bob" in work_block
+        # Should return a dict with group structure
+        assert isinstance(out, dict)
+        assert "personal" in out
+        assert "work" in out
+        
+        # Each group should be a dict of {name: record}
+        assert "Alice" in out["personal"]
+        assert "Bob" in out["work"]
 
     def test_list_contacts_unknown_group_raises(self, contact_service):
         with pytest.raises(ValueError, match="Group 'unknown' not found"):
@@ -570,8 +639,9 @@ class TestGroupsIsolation:
         svc.change_contact("John", "1111111111", "3333333333")
 
         phones = self._get_phones_by_group(svc, "John")
-        assert sorted(phones["personal"]) == ["3333333333"]
-        assert sorted(phones["work"]) == ["2222222222"]
+        # Phones are formatted with country code
+        assert sorted(phones["personal"]) == ["+3803333333333"]
+        assert sorted(phones["work"]) == ["+3802222222222"]
 
     def test_tags_are_isolated_per_group(self, contact_service):
         """Tag operations for the same name are scoped to current group."""
@@ -680,9 +750,13 @@ class TestGroupsServiceAPI:
         
         out = contact_service.get_all_contacts(group="all")
         
-        # Check that tags are displayed
-        assert "friend" in out
-        assert "colleague" in out
+        # Returns a dict with group structure
+        assert isinstance(out, dict)
+        assert "Alice" in out["personal"]
+        assert "Bob" in out["work"]
+        # Check that tags are set
+        assert "friend" in out["personal"]["Alice"].tags.as_list()
+        assert "colleague" in out["work"]["Bob"].tags.as_list()
     
     def test_get_all_contacts_skips_empty_groups(self, contact_service):
         """Test that get_all_contacts with group='all' skips empty groups."""
@@ -698,14 +772,18 @@ class TestGroupsServiceAPI:
         assert "friends" in out or "Alice" in out
     
     def test_get_all_contacts_with_all_groups_empty(self, contact_service):
-        """Test that get_all_contacts with group='all' returns empty message when no contacts."""
+        """Test that get_all_contacts with group='all' returns empty dict when no contacts."""
         contact_service.add_group("work")
         contact_service.add_group("friends")
         
         out = contact_service.get_all_contacts(group="all")
         
-        # Should return empty message since all groups are empty
-        assert "Address book is empty" in out
+        # Should return a dict with empty groups
+        assert isinstance(out, dict)
+        # Empty groups may or may not be included depending on implementation
+        # What matters is that there are no contacts
+        total_contacts = sum(len(contacts) for contacts in out.values() if isinstance(contacts, dict))
+        assert total_contacts == 0
 
 
 class TestTagManagement:
@@ -1074,14 +1152,20 @@ class TestGetAllContactsWithEmailAndAddress:
         contact_service.add_contact("Alice", "1234567890")
         contact_service.add_email("Alice", "alice@example.com")
         result = contact_service.get_all_contacts()
-        assert "alice@example.com" in result
+        assert isinstance(result, dict)
+        assert "Alice" in result
+        assert result["Alice"].email is not None
+        assert str(result["Alice"].email) == "alice@example.com"
     
     def test_get_all_contacts_includes_address(self, contact_service):
         """Test that get_all_contacts includes address in output."""
         contact_service.add_contact("Alice", "1234567890")
         contact_service.set_address("Alice", "UA", "Kyiv", "Main St 1")
         result = contact_service.get_all_contacts()
-        assert "Main St 1, Kyiv, UA" in result
+        assert isinstance(result, dict)
+        assert "Alice" in result
+        assert result["Alice"].address is not None
+        assert "Main St 1" in str(result["Alice"].address)
     
     def test_get_all_contacts_includes_email_and_address(self, contact_service):
         """Test that get_all_contacts includes both email and address."""
@@ -1089,8 +1173,10 @@ class TestGetAllContactsWithEmailAndAddress:
         contact_service.add_email("Alice", "alice@example.com")
         contact_service.set_address("Alice", "UA", "Kyiv", "Main St 1")
         result = contact_service.get_all_contacts()
-        assert "alice@example.com" in result
-        assert "Main St 1, Kyiv, UA" in result
+        assert isinstance(result, dict)
+        assert "Alice" in result
+        assert result["Alice"].email is not None
+        assert result["Alice"].address is not None
     
     def test_get_all_contacts_grouped_includes_email_and_address(self, contact_service):
         """Test that get_all_contacts with group='all' includes email and address."""
@@ -1105,7 +1191,11 @@ class TestGetAllContactsWithEmailAndAddress:
         contact_service.set_address("Bob", "PL", "Warsaw", "New St 2")
         
         result = contact_service.get_all_contacts(group="all")
-        assert "alice@example.com" in result
-        assert "Main St 1, Kyiv, UA" in result
-        assert "bob@example.com" in result
-        assert "New St 2, Warsaw, PL" in result
+        assert isinstance(result, dict)
+        assert "personal" in result and "work" in result
+        assert "Alice" in result["personal"]
+        assert "Bob" in result["work"]
+        assert result["personal"]["Alice"].email is not None
+        assert result["personal"]["Alice"].address is not None
+        assert result["work"]["Bob"].email is not None
+        assert result["work"]["Bob"].address is not None

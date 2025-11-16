@@ -12,6 +12,9 @@ from src.utils.progressive_params import (
     ContactSelector,
     NoteSelector,
     TagSelector,
+    EmailInput,
+    CountrySelector,
+    CitySelector,
     progressive_params,
     _ProgressiveParamsWrapper,
 )
@@ -79,6 +82,20 @@ class TestTextInput:
         provider = TextInput("Enter text:", validator=validator, error_message="Too short")
         assert provider.validator is not None
         assert provider.error_message == "Too short"
+    
+    @patch('src.utils.progressive_params.questionary.text')
+    def test_optional_with_custom_validator(self, mock_text):
+        """Test optional text input with custom validator."""
+        def validator(text):
+            return len(text) > 5
+        
+        mock_text.return_value.ask.return_value = "short"
+        
+        provider = TextInput("Enter text:", required=False, validator=validator, error_message="Too short")
+        result = provider.get_value("text", None)
+        
+        # Should return the result even if validation fails (since it's optional)
+        assert result == "short"
     
     @patch('src.utils.progressive_params.questionary.text')
     def test_empty_string_handling(self, mock_text):
@@ -300,6 +317,14 @@ class TestSelectInput:
         result = provider.get_value("option", None)
         
         assert result is None  # No choices, so None
+    
+    def test_empty_choices_with_required(self):
+        """Test with empty choices list for required selection."""
+        choices = []
+        provider = SelectInput("Select:", choices, required=True)
+        result = provider.get_value("option", None)
+        
+        assert result is None
 
 
 class TestProgressiveParamsDecorator:
@@ -795,4 +820,624 @@ class TestTagSelector:
         result = provider.get_value("tag", None, contact_name="John", note_name="Meeting")
         
         assert result == "urgent"
+
+
+class TestEmailInput:
+    """Tests for EmailInput parameter provider."""
+    
+    def test_returns_existing_value(self):
+        """Test that existing value is returned without prompting."""
+        provider = EmailInput("Enter email:")
+        result = provider.get_value("email", "test@example.com")
+        assert result == "test@example.com"
+    
+    @patch('src.utils.progressive_params.typer.prompt')
+    def test_required_email_input(self, mock_prompt):
+        """Test getting required email input."""
+        mock_prompt.return_value = "user@example.com"
+        
+        provider = EmailInput("Enter email:", required=True)
+        result = provider.get_value("email", None)
+        
+        assert result == "user@example.com"
+        mock_prompt.assert_called_once()
+    
+    @patch('src.utils.progressive_params.typer.prompt')
+    def test_email_with_default(self, mock_prompt):
+        """Test email input with default value."""
+        mock_prompt.return_value = ""
+        
+        provider = EmailInput("Enter email:", required=False, default="default@example.com")
+        result = provider.get_value("email", None)
+        
+        assert result == "default@example.com"
+    
+    @patch('src.utils.progressive_params.typer.prompt')
+    def test_email_strips_whitespace(self, mock_prompt):
+        """Test that email input strips whitespace."""
+        mock_prompt.return_value = "  user@example.com  "
+        
+        provider = EmailInput("Enter email:")
+        result = provider.get_value("email", None)
+        
+        assert result == "user@example.com"
+    
+    @patch('src.utils.progressive_params.typer.prompt')
+    def test_user_cancels_with_keyboard_interrupt(self, mock_prompt):
+        """Test user cancels with Ctrl+C."""
+        mock_prompt.side_effect = KeyboardInterrupt()
+        
+        provider = EmailInput("Enter email:", required=True)
+        result = provider.get_value("email", None)
+        
+        assert result is None
+    
+    @patch('src.utils.progressive_params.typer.prompt')
+    def test_user_cancels_with_eof(self, mock_prompt):
+        """Test user cancels with EOF."""
+        mock_prompt.side_effect = EOFError()
+        
+        provider = EmailInput("Enter email:", required=True)
+        result = provider.get_value("email", None)
+        
+        assert result is None
+    
+    @patch('src.utils.progressive_params.typer.prompt')
+    def test_user_cancels_with_abort(self, mock_prompt):
+        """Test user cancels with click Abort exception (Ctrl+C in typer.prompt)."""
+        import click
+        mock_prompt.side_effect = click.exceptions.Abort()
+        
+        provider = EmailInput("Enter email:", required=True)
+        result = provider.get_value("email", None)
+        
+        assert result is None
+    
+    @patch('src.utils.progressive_params.typer.prompt')
+    def test_empty_required_email(self, mock_prompt):
+        """Test empty input for required email."""
+        mock_prompt.return_value = ""
+        
+        provider = EmailInput("Enter email:", required=True)
+        result = provider.get_value("email", None)
+        
+        assert result is None
+    
+    @patch('src.utils.progressive_params.typer.prompt')
+    def test_empty_optional_email_with_default(self, mock_prompt):
+        """Test empty input for optional email with default."""
+        mock_prompt.return_value = "   "
+        
+        provider = EmailInput("Enter email:", required=False, default="default@test.com")
+        result = provider.get_value("email", None)
+        
+        assert result == "default@test.com"
+    
+    @patch('src.utils.progressive_params.typer.prompt')
+    def test_empty_optional_email_no_default(self, mock_prompt):
+        """Test empty input for optional email without default."""
+        mock_prompt.return_value = ""
+        
+        provider = EmailInput("Enter email:", required=False, default="")
+        result = provider.get_value("email", None)
+        
+        assert result is None or result == ""
+
+
+class TestCountrySelector:
+    """Tests for CountrySelector parameter provider."""
+    
+    def test_returns_existing_value(self):
+        """Test that existing value is returned without prompting."""
+        provider = CountrySelector()
+        result = provider.get_value("country", "UA")
+        assert result == "UA"
+    
+    def test_get_choices_returns_none(self):
+        """Test when get_choices returns None."""
+        provider = CountrySelector()
+        
+        # Mock get_choices to return None (simulating an error condition)
+        with patch.object(provider, 'get_choices', return_value=None):
+            result = provider.get_value("country", None)
+            
+        # When get_choices returns None, get_value should return None
+        assert result is None
+    
+    @patch('src.utils.progressive_params.get_catalog')
+    @patch('src.utils.progressive_params.questionary.select')
+    def test_user_selects_country(self, mock_select, mock_get_catalog):
+        """Test user selects a country."""
+        mock_catalog = Mock()
+        mock_catalog.get_countries.return_value = [("UA", "Ukraine"), ("PL", "Poland")]
+        mock_catalog.is_user_country.return_value = False
+        mock_get_catalog.return_value = mock_catalog
+        mock_select.return_value.ask.return_value = "UA - Ukraine"
+        
+        provider = CountrySelector()
+        result = provider.get_value("country", None)
+        
+        assert result == "UA"
+    
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_user_cancels(self, mock_get_catalog, mock_select):
+        """Test user cancels country selection."""
+        mock_catalog = Mock()
+        mock_catalog.get_countries.return_value = [("UA", "Ukraine")]
+        mock_catalog.is_user_country.return_value = False
+        mock_get_catalog.return_value = mock_catalog
+        mock_select.return_value.ask.return_value = "Cancel"
+        
+        provider = CountrySelector()
+        result = provider.get_value("country", None)
+        
+        assert result is None
+    
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_user_cancels_with_none(self, mock_get_catalog, mock_select):
+        """Test user cancels with None."""
+        mock_catalog = Mock()
+        mock_catalog.get_countries.return_value = [("UA", "Ukraine")]
+        mock_catalog.is_user_country.return_value = False
+        mock_get_catalog.return_value = mock_catalog
+        mock_select.return_value.ask.return_value = None
+        
+        provider = CountrySelector()
+        result = provider.get_value("country", None)
+        
+        assert result is None
+    
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_user_country_marker(self, mock_get_catalog, mock_select):
+        """Test that user countries show (user) marker."""
+        mock_catalog = Mock()
+        mock_catalog.get_countries.return_value = [("UA", "Ukraine"), ("XX", "Custom")]
+        mock_catalog.is_user_country.side_effect = lambda code: code == "XX"
+        mock_get_catalog.return_value = mock_catalog
+        mock_select.return_value.ask.return_value = "XX - Custom (user)"
+        
+        provider = CountrySelector()
+        result = provider.get_value("country", None)
+        
+        assert result == "XX"
+    
+    @patch('src.utils.progressive_params.questionary.confirm')
+    @patch('src.utils.progressive_params.questionary.text')
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_add_new_country_flow(self, mock_get_catalog, mock_select, mock_text, mock_confirm):
+        """Test adding a new country."""
+        mock_catalog = Mock()
+        mock_catalog.get_countries.return_value = [("UA", "Ukraine")]
+        mock_catalog.is_user_country.return_value = False
+        mock_catalog.has_country.return_value = False
+        mock_get_catalog.return_value = mock_catalog
+        
+        mock_select.return_value.ask.return_value = "[Add new country]"
+        mock_text.return_value.ask.side_effect = ["PL", "Poland"]
+        mock_confirm.return_value.ask.return_value = True
+        
+        provider = CountrySelector()
+        result = provider.get_value("country", None)
+        
+        assert result == "PL"
+        mock_catalog.add_user_country.assert_called_once_with("PL", "Poland")
+    
+    @patch('src.utils.progressive_params.questionary.text')
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_add_new_country_user_cancels_code_input(self, mock_get_catalog, mock_select, mock_text):
+        """Test user cancels when entering country code."""
+        mock_catalog = Mock()
+        mock_catalog.get_countries.return_value = [("UA", "Ukraine")]
+        mock_catalog.is_user_country.return_value = False
+        mock_get_catalog.return_value = mock_catalog
+        
+        mock_select.return_value.ask.return_value = "[Add new country]"
+        mock_text.return_value.ask.return_value = None
+        
+        provider = CountrySelector()
+        result = provider.get_value("country", None)
+        
+        assert result is None
+    
+    @patch('src.utils.progressive_params.questionary.text')
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_add_existing_country(self, mock_get_catalog, mock_select, mock_text):
+        """Test adding a country that already exists."""
+        mock_catalog = Mock()
+        mock_catalog.get_countries.return_value = [("UA", "Ukraine")]
+        mock_catalog.is_user_country.return_value = False
+        mock_catalog.has_country.return_value = True
+        mock_catalog.get_country_name.return_value = "Ukraine"
+        mock_get_catalog.return_value = mock_catalog
+        
+        mock_select.return_value.ask.return_value = "[Add new country]"
+        mock_text.return_value.ask.return_value = "UA"
+        
+        provider = CountrySelector()
+        result = provider.get_value("country", None)
+        
+        assert result == "UA"
+    
+    @patch('src.utils.progressive_params.questionary.confirm')
+    @patch('src.utils.progressive_params.questionary.text')
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_add_new_country_user_cancels_name_input(self, mock_get_catalog, mock_select, mock_text, mock_confirm):
+        """Test user cancels when entering country name."""
+        mock_catalog = Mock()
+        mock_catalog.get_countries.return_value = [("UA", "Ukraine")]
+        mock_catalog.is_user_country.return_value = False
+        mock_catalog.has_country.return_value = False
+        mock_get_catalog.return_value = mock_catalog
+        
+        mock_select.return_value.ask.return_value = "[Add new country]"
+        mock_text.return_value.ask.side_effect = ["PL", None]
+        
+        provider = CountrySelector()
+        result = provider.get_value("country", None)
+        
+        assert result is None
+    
+    @patch('src.utils.progressive_params.questionary.confirm')
+    @patch('src.utils.progressive_params.questionary.text')
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_add_new_country_user_declines_confirm(self, mock_get_catalog, mock_select, mock_text, mock_confirm):
+        """Test user declines to add new country."""
+        mock_catalog = Mock()
+        mock_catalog.get_countries.return_value = [("UA", "Ukraine")]
+        mock_catalog.is_user_country.return_value = False
+        mock_catalog.has_country.return_value = False
+        mock_get_catalog.return_value = mock_catalog
+        
+        mock_select.return_value.ask.return_value = "[Add new country]"
+        mock_text.return_value.ask.side_effect = ["PL", "Poland"]
+        mock_confirm.return_value.ask.side_effect = [False, False]
+        
+        provider = CountrySelector()
+        result = provider.get_value("country", None)
+        
+        assert result is None
+    
+    @patch('src.utils.progressive_params.questionary.confirm')
+    @patch('src.utils.progressive_params.questionary.text')
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_add_new_country_error_handling(self, mock_get_catalog, mock_select, mock_text, mock_confirm):
+        """Test error handling when adding country."""
+        mock_catalog = Mock()
+        mock_catalog.get_countries.return_value = [("UA", "Ukraine")]
+        mock_catalog.is_user_country.return_value = False
+        mock_catalog.has_country.return_value = False
+        mock_catalog.add_user_country.side_effect = ValueError("Invalid country")
+        mock_get_catalog.return_value = mock_catalog
+        
+        mock_select.return_value.ask.return_value = "[Add new country]"
+        mock_text.return_value.ask.side_effect = ["PL", "Poland"]
+        mock_confirm.return_value.ask.side_effect = [True, False]
+        
+        provider = CountrySelector()
+        result = provider.get_value("country", None)
+        
+        assert result is None
+    
+    @patch('src.utils.progressive_params.questionary.confirm')
+    @patch('src.utils.progressive_params.questionary.text')
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_add_new_country_retry_after_error(self, mock_get_catalog, mock_select, mock_text, mock_confirm):
+        """Test retrying after error when adding country."""
+        mock_catalog = Mock()
+        mock_catalog.get_countries.return_value = [("UA", "Ukraine")]
+        mock_catalog.is_user_country.return_value = False
+        mock_catalog.has_country.return_value = False
+        mock_catalog.add_user_country.side_effect = ValueError("Invalid country")
+        mock_get_catalog.return_value = mock_catalog
+        
+        # First select Add new country, then on retry select existing country
+        mock_select.return_value.ask.side_effect = ["[Add new country]", "UA - Ukraine"]
+        mock_text.return_value.ask.side_effect = ["PL", "Poland"]
+        mock_confirm.return_value.ask.side_effect = [True, True]
+        
+        provider = CountrySelector()
+        result = provider.get_value("country", None)
+        
+        assert result == "UA"
+    
+    @patch('src.utils.progressive_params.questionary.confirm')
+    @patch('src.utils.progressive_params.questionary.text')
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_add_new_country_decline_then_retry(self, mock_get_catalog, mock_select, mock_text, mock_confirm):
+        """Test declining to add country then retrying selection."""
+        mock_catalog = Mock()
+        mock_catalog.get_countries.return_value = [("UA", "Ukraine")]
+        mock_catalog.is_user_country.return_value = False
+        mock_catalog.has_country.return_value = False
+        mock_get_catalog.return_value = mock_catalog
+        
+        # First select Add new country, decline, then retry and select existing
+        mock_select.return_value.ask.side_effect = ["[Add new country]", "UA - Ukraine"]
+        mock_text.return_value.ask.side_effect = ["PL", "Poland"]
+        mock_confirm.return_value.ask.side_effect = [False, True]
+        
+        provider = CountrySelector()
+        result = provider.get_value("country", None)
+        
+        assert result == "UA"
+
+
+class TestCitySelector:
+    """Tests for CitySelector parameter provider."""
+    
+    def test_returns_existing_value(self):
+        """Test that existing value is returned without prompting."""
+        provider = CitySelector()
+        result = provider.get_value("city", "Kyiv", country_code="UA")
+        assert result == "Kyiv"
+    
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_no_country_in_context(self, mock_get_catalog, mock_select):
+        """Test when country_code is not in context."""
+        provider = CitySelector()
+        result = provider.get_value("city", None)
+        
+        assert result is None
+        mock_select.assert_not_called()
+    
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_country_not_found(self, mock_get_catalog, mock_select):
+        """Test when country is not found in catalog."""
+        mock_catalog = Mock()
+        mock_catalog.has_country.return_value = False
+        mock_get_catalog.return_value = mock_catalog
+        
+        provider = CitySelector()
+        result = provider.get_value("city", None, country_code="XX")
+        
+        assert result is None
+        mock_select.assert_not_called()
+    
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_user_selects_city(self, mock_get_catalog, mock_select):
+        """Test user selects a city."""
+        mock_catalog = Mock()
+        mock_catalog.has_country.return_value = True
+        mock_catalog.get_cities.return_value = ["Kyiv", "Lviv"]
+        mock_catalog.is_user_city.return_value = False
+        mock_get_catalog.return_value = mock_catalog
+        mock_select.return_value.ask.return_value = "Kyiv"
+        
+        provider = CitySelector()
+        result = provider.get_value("city", None, country_code="UA")
+        
+        assert result == "Kyiv"
+    
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_user_cancels(self, mock_get_catalog, mock_select):
+        """Test user cancels city selection."""
+        mock_catalog = Mock()
+        mock_catalog.has_country.return_value = True
+        mock_catalog.get_cities.return_value = ["Kyiv"]
+        mock_catalog.is_user_city.return_value = False
+        mock_get_catalog.return_value = mock_catalog
+        mock_select.return_value.ask.return_value = "Cancel"
+        
+        provider = CitySelector()
+        result = provider.get_value("city", None, country_code="UA")
+        
+        assert result is None
+    
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_user_cancels_with_none(self, mock_get_catalog, mock_select):
+        """Test user cancels with None."""
+        mock_catalog = Mock()
+        mock_catalog.has_country.return_value = True
+        mock_catalog.get_cities.return_value = ["Kyiv"]
+        mock_catalog.is_user_city.return_value = False
+        mock_get_catalog.return_value = mock_catalog
+        mock_select.return_value.ask.return_value = None
+        
+        provider = CitySelector()
+        result = provider.get_value("city", None, country_code="UA")
+        
+        assert result is None
+    
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_user_city_marker(self, mock_get_catalog, mock_select):
+        """Test that user cities show (user) marker."""
+        mock_catalog = Mock()
+        mock_catalog.has_country.return_value = True
+        mock_catalog.get_cities.return_value = ["Kyiv", "CustomCity"]
+        mock_catalog.is_user_city.side_effect = lambda country, city: city == "CustomCity"
+        mock_get_catalog.return_value = mock_catalog
+        mock_select.return_value.ask.return_value = "CustomCity (user)"
+        
+        provider = CitySelector()
+        result = provider.get_value("city", None, country_code="UA")
+        
+        assert result == "CustomCity"
+    
+    @patch('src.utils.progressive_params.questionary.confirm')
+    @patch('src.utils.progressive_params.questionary.text')
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_add_new_city_flow(self, mock_get_catalog, mock_select, mock_text, mock_confirm):
+        """Test adding a new city."""
+        mock_catalog = Mock()
+        mock_catalog.has_country.return_value = True
+        mock_catalog.get_cities.return_value = ["Kyiv"]
+        mock_catalog.is_user_city.return_value = False
+        mock_catalog.get_country_name.return_value = "Ukraine"
+        mock_get_catalog.return_value = mock_catalog
+        
+        mock_select.return_value.ask.return_value = "[Add new city]"
+        mock_text.return_value.ask.return_value = "Lviv"
+        mock_confirm.return_value.ask.return_value = True
+        
+        provider = CitySelector()
+        result = provider.get_value("city", None, country_code="UA")
+        
+        assert result == "Lviv"
+        mock_catalog.add_user_city.assert_called_once_with("UA", "Lviv")
+    
+    @patch('src.utils.progressive_params.questionary.text')
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_add_new_city_user_cancels(self, mock_get_catalog, mock_select, mock_text):
+        """Test user cancels when entering city name."""
+        mock_catalog = Mock()
+        mock_catalog.has_country.return_value = True
+        mock_catalog.get_cities.return_value = ["Kyiv"]
+        mock_catalog.is_user_city.return_value = False
+        mock_catalog.get_country_name.return_value = "Ukraine"
+        mock_get_catalog.return_value = mock_catalog
+        
+        mock_select.return_value.ask.return_value = "[Add new city]"
+        mock_text.return_value.ask.return_value = None
+        
+        provider = CitySelector()
+        result = provider.get_value("city", None, country_code="UA")
+        
+        assert result is None
+    
+    @patch('src.utils.progressive_params.questionary.text')
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_add_existing_city(self, mock_get_catalog, mock_select, mock_text):
+        """Test adding a city that already exists."""
+        mock_catalog = Mock()
+        mock_catalog.has_country.return_value = True
+        mock_catalog.get_cities.return_value = ["Kyiv"]
+        mock_catalog.is_user_city.return_value = False
+        mock_catalog.get_country_name.return_value = "Ukraine"
+        mock_get_catalog.return_value = mock_catalog
+        
+        mock_select.return_value.ask.return_value = "[Add new city]"
+        mock_text.return_value.ask.return_value = "Kyiv"
+        
+        provider = CitySelector()
+        result = provider.get_value("city", None, country_code="UA")
+        
+        assert result == "Kyiv"
+    
+    @patch('src.utils.progressive_params.questionary.confirm')
+    @patch('src.utils.progressive_params.questionary.text')
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_add_new_city_user_declines_confirm(self, mock_get_catalog, mock_select, mock_text, mock_confirm):
+        """Test user declines to add new city."""
+        mock_catalog = Mock()
+        mock_catalog.has_country.return_value = True
+        mock_catalog.get_cities.return_value = ["Kyiv"]
+        mock_catalog.is_user_city.return_value = False
+        mock_catalog.get_country_name.return_value = "Ukraine"
+        mock_get_catalog.return_value = mock_catalog
+        
+        mock_select.return_value.ask.return_value = "[Add new city]"
+        mock_text.return_value.ask.return_value = "Lviv"
+        mock_confirm.return_value.ask.side_effect = [False, False]
+        
+        provider = CitySelector()
+        result = provider.get_value("city", None, country_code="UA")
+        
+        assert result is None
+    
+    @patch('src.utils.progressive_params.questionary.confirm')
+    @patch('src.utils.progressive_params.questionary.text')
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_add_new_city_error_handling(self, mock_get_catalog, mock_select, mock_text, mock_confirm):
+        """Test error handling when adding city."""
+        mock_catalog = Mock()
+        mock_catalog.has_country.return_value = True
+        mock_catalog.get_cities.return_value = ["Kyiv"]
+        mock_catalog.is_user_city.return_value = False
+        mock_catalog.get_country_name.return_value = "Ukraine"
+        mock_catalog.add_user_city.side_effect = ValueError("Invalid city")
+        mock_get_catalog.return_value = mock_catalog
+        
+        mock_select.return_value.ask.return_value = "[Add new city]"
+        mock_text.return_value.ask.return_value = "Lviv"
+        mock_confirm.return_value.ask.side_effect = [True, False]
+        
+        provider = CitySelector()
+        result = provider.get_value("city", None, country_code="UA")
+        
+        assert result is None
+    
+    @patch('src.utils.progressive_params.questionary.confirm')
+    @patch('src.utils.progressive_params.questionary.text')
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_add_new_city_retry_after_error(self, mock_get_catalog, mock_select, mock_text, mock_confirm):
+        """Test retrying after error when adding city."""
+        mock_catalog = Mock()
+        mock_catalog.has_country.return_value = True
+        mock_catalog.get_cities.return_value = ["Kyiv"]
+        mock_catalog.is_user_city.return_value = False
+        mock_catalog.get_country_name.return_value = "Ukraine"
+        mock_catalog.add_user_city.side_effect = ValueError("Invalid city")
+        mock_get_catalog.return_value = mock_catalog
+        
+        # First select Add new city, then on retry select existing city
+        mock_select.return_value.ask.side_effect = ["[Add new city]", "Kyiv"]
+        mock_text.return_value.ask.return_value = "Lviv"
+        mock_confirm.return_value.ask.side_effect = [True, True]
+        
+        provider = CitySelector()
+        result = provider.get_value("city", None, country_code="UA")
+        
+        assert result == "Kyiv"
+    
+    @patch('src.utils.progressive_params.questionary.confirm')
+    @patch('src.utils.progressive_params.questionary.text')
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_add_new_city_decline_then_retry(self, mock_get_catalog, mock_select, mock_text, mock_confirm):
+        """Test declining to add city then retrying selection."""
+        mock_catalog = Mock()
+        mock_catalog.has_country.return_value = True
+        mock_catalog.get_cities.return_value = ["Kyiv"]
+        mock_catalog.is_user_city.return_value = False
+        mock_catalog.get_country_name.return_value = "Ukraine"
+        mock_get_catalog.return_value = mock_catalog
+        
+        # First select Add new city, decline, then retry and select existing
+        mock_select.return_value.ask.side_effect = ["[Add new city]", "Kyiv"]
+        mock_text.return_value.ask.return_value = "Lviv"
+        mock_confirm.return_value.ask.side_effect = [False, True]
+        
+        provider = CitySelector()
+        result = provider.get_value("city", None, country_code="UA")
+        
+        assert result == "Kyiv"
+    
+    @patch('src.utils.progressive_params.questionary.select')
+    @patch('src.utils.progressive_params.get_catalog')
+    def test_accepts_country_parameter(self, mock_get_catalog, mock_select):
+        """Test that CitySelector accepts 'country' parameter as well."""
+        mock_catalog = Mock()
+        mock_catalog.has_country.return_value = True
+        mock_catalog.get_cities.return_value = ["Kyiv"]
+        mock_catalog.is_user_city.return_value = False
+        mock_get_catalog.return_value = mock_catalog
+        mock_select.return_value.ask.return_value = "Kyiv"
+        
+        provider = CitySelector()
+        result = provider.get_value("city", None, country="UA")
+        
+        assert result == "Kyiv"
 

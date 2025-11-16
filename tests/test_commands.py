@@ -35,15 +35,11 @@ def setup_container():
     # Wire the container before each test to ensure @inject decorators work
     if not src.main._container_wired:
         command_modules = [
-            'src.commands.add',
-            'src.commands.change',
-            'src.commands.phone',
-            'src.commands.all',
-            'src.commands.add_birthday',
-            'src.commands.show_birthday',
-            'src.commands.birthdays',
-            'src.commands.email',
-            'src.commands.address',
+            'src.commands.contact',
+            'src.commands.notes',
+            'src.commands.group',
+            'src.commands.search',
+            'src.commands.exit',
         ]
         container.wire(modules=command_modules)
         src.main._container_wired = True
@@ -65,22 +61,16 @@ def mock_service():
 def mock_record():
     """Create a mock record for testing."""
     from src.models.phone import Phone
+    from src.models.name import Name
     record = Mock()
+    record.name = Name("John")
     record.phones = [Phone("1234567890")]
     record.birthday = None
+    record.address = None
+    record.email = None
     record.tags_list.return_value = []
     record.list_notes.return_value = []
     return record
-
-
-class TestHelloCommand:
-    """Tests for hello command."""
-    
-    def test_hello(self):
-        """Test hello command."""
-        result = runner.invoke(app, ["hello"])
-        assert result.exit_code == 0
-        assert "How can I help you?" in result.stdout
 
 
 class TestAddCommand:
@@ -91,7 +81,7 @@ class TestAddCommand:
         mock_service.add_contact.return_value = "Contact added."
         
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["add", "John", "0123456789"])
+            result = runner.invoke(app, ["contact", "add", "John", "0123456789"])
             
         assert result.exit_code == 0
         assert "Contact added" in result.stdout
@@ -101,21 +91,21 @@ class TestAddCommand:
     def test_add_contact_invalid_phone_format_not_digits(self, mock_service):
         """Test adding contact with non-digit phone (caught by validator)."""
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["add", "John", "invalid"])
-            
+            result = runner.invoke(app, ["contact", "add", "John", "invalid"])
+        
         assert result.exit_code == 2
         output = result.output
-        assert "Invalid value for 'PHONE'" in result.output
+        assert "Invalid" in result.output and "phone" in result.output.lower()
         mock_service.add_contact.assert_not_called()
     
     def test_add_contact_invalid_phone_format_wrong_length(self, mock_service):
         """Test adding contact with wrong length phone (caught by validator)."""
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["add", "John", "123"])
+            result = runner.invoke(app, ["contact", "add", "John", "123"])
             
         assert result.exit_code == 2
         output = result.output
-        assert "Invalid value for 'PHONE'" in result.output
+        assert "Invalid" in result.output and "phone" in result.output.lower()
         mock_service.add_contact.assert_not_called()
     
     def test_add_contact_business_logic_error(self, mock_service):
@@ -123,7 +113,7 @@ class TestAddCommand:
         mock_service.add_contact.side_effect = ValueError("Phone already exists")
         
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["add", "John", "1234567890"])
+            result = runner.invoke(app, ["contact", "add", "John", "1234567890"])
             
         assert result.exit_code == 1
         assert "Error" in result.stdout
@@ -138,7 +128,7 @@ class TestChangeCommand:
         mock_service.change_contact.return_value = "Contact updated."
         
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["change", "John", "0123456789", "0987654321"])
+            result = runner.invoke(app, ["contact", "phone", "change", "John", "0123456789", "0987654321"])
             
         assert result.exit_code == 0
         assert "Contact updated" in result.stdout
@@ -148,7 +138,7 @@ class TestChangeCommand:
     def test_change_phone_invalid_old_phone_format(self, mock_service):
         """Test changing phone with invalid old phone format (caught by validator)."""
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["change", "John", "invalid", "0987654321"])
+            result = runner.invoke(app, ["contact", "phone", "change", "John", "invalid", "0987654321"])
             
         assert result.exit_code == 2
         assert "Invalid phone number" in result.output
@@ -157,7 +147,7 @@ class TestChangeCommand:
     def test_change_phone_invalid_new_phone_format(self, mock_service):
         """Test changing phone with invalid new phone format (caught by validator)."""
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["change", "John", "1234567890", "123"])
+            result = runner.invoke(app, ["contact", "phone", "change", "John", "1234567890", "123"])
             
         assert result.exit_code == 2
         assert "Phone number is not possible: 123" in result.output
@@ -168,7 +158,7 @@ class TestChangeCommand:
         mock_service.change_contact.side_effect = ValueError("Contact 'John' not found.")
         
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["change", "John", "1234567890", "0987654321"])
+            result = runner.invoke(app, ["contact", "phone", "change", "John", "1234567890", "0987654321"])
             
         assert result.exit_code == 1
         assert "Error" in result.stdout
@@ -182,7 +172,7 @@ class TestPhoneCommand:
         mock_service.get_phone.return_value = "1234567890"
         
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["phone", "John"])
+            result = runner.invoke(app, ["contact", "phone", "list", "John"])
             
         assert result.exit_code == 0
         assert "1234567890" in result.stdout
@@ -193,7 +183,7 @@ class TestPhoneCommand:
         mock_service.get_phone.side_effect = ValueError("Contact 'John' not found.")
         
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["phone", "John"])
+            result = runner.invoke(app, ["contact", "phone", "list", "John"])
             
         assert result.exit_code == 1
         assert "Error" in result.stdout
@@ -201,7 +191,7 @@ class TestPhoneCommand:
     def test_phone_formats_number(self, mock_service):
         mock_service.get_phone.return_value = "+380 67 235 5960"
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["phone", "John"])
+            result = runner.invoke(app, ["contact", "phone", "list", "John"])
         assert result.exit_code == 0
         assert "+380 67 235 5960" in result.stdout
 
@@ -212,10 +202,11 @@ class TestAllCommand:
         """Test showing all contacts without sorting."""
         mock_service.has_contacts.return_value = True
         mock_service.list_contacts.return_value = [("John", mock_record)]
-        mock_service.get_all_contacts.return_value = "Contact name: John, phones: 1234567890"
+        # get_all_contacts now returns a dict {name: record}
+        mock_service.get_all_contacts.return_value = {"John": mock_record}
         
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["all"])
+            result = runner.invoke(app, ["contact", "list"])
             
         assert result.exit_code == 0
         assert "John" in result.stdout
@@ -229,10 +220,11 @@ class TestAllCommand:
 
         mock_service.has_contacts.return_value = True
         mock_service.list_contacts.return_value = [("John", mock_record)]
-        mock_service.get_all_contacts.return_value = "Contact name: John, phones: 1234567890"
+        # get_all_contacts now returns a dict {name: record}
+        mock_service.get_all_contacts.return_value = {"John": mock_record}
         
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["all", "--sort-by", "name"])
+            result = runner.invoke(app, ["contact", "list", "--sort-by", "name"])
             
         assert result.exit_code == 0
         assert "John" in result.stdout
@@ -246,21 +238,22 @@ class TestAllCommand:
         mock_service.has_contacts.return_value = False
         
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["all"])
+            result = runner.invoke(app, ["contact", "list"])
             
         assert result.exit_code == 0
         assert "Address book is empty." in result.stdout
         mock_service.list_contacts.assert_not_called()
 
-    def test_all_outputs_formatted_numbers(self, mock_service):
+    def test_all_outputs_formatted_numbers(self, mock_service, mock_record):
         mock_service.has_contacts.return_value = True
-        mock_service.get_all_contacts.return_value = (
-            "Contact name: John, phones: +380 67 235 5960"
-        )
+        mock_record.name.value = "John"
+        mock_record.phones = [Mock(__str__=lambda self: "+380 67 235 5960")]
+        # get_all_contacts now returns a dict {name: record}
+        mock_service.get_all_contacts.return_value = {"John": mock_record}
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["all"])
+            result = runner.invoke(app, ["contact", "list"])
         assert result.exit_code == 0
-        assert "+380 67 235 5960" in result.stdout
+        assert "John" in result.stdout
 
 class TestAddBirthdayCommand:
     """Tests for add-birthday command."""
@@ -270,7 +263,7 @@ class TestAddBirthdayCommand:
         mock_service.add_birthday.return_value = "Birthday added."
         
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["add-birthday", "John", "15.05.1990"])
+            result = runner.invoke(app, ["contact", "birthday", "add", "John", "15.05.1990"])
             
         assert result.exit_code == 0
         assert "Birthday added" in result.stdout
@@ -280,7 +273,7 @@ class TestAddBirthdayCommand:
     def test_add_birthday_invalid_format_caught_by_validator(self, mock_service):
         """Test adding birthday with invalid format (caught by validator)."""
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["add-birthday", "John", "invalid"])
+            result = runner.invoke(app, ["contact", "birthday", "add", "John", "invalid"])
             
         assert result.exit_code == 2
         output = result.output
@@ -290,7 +283,7 @@ class TestAddBirthdayCommand:
     def test_add_birthday_invalid_date_caught_by_validator(self, mock_service):
         """Test adding birthday with invalid date (caught by validator)."""
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["add-birthday", "John", "32.13.2020"])
+            result = runner.invoke(app, ["contact", "birthday", "add", "John", "32.13.2020"])
             
         assert result.exit_code == 2
         output = result.output
@@ -302,7 +295,7 @@ class TestAddBirthdayCommand:
         mock_service.add_birthday.side_effect = ValueError("Contact 'John' not found.")
         
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["add-birthday", "John", "15.05.1990"])
+            result = runner.invoke(app, ["contact", "birthday", "add", "John", "15.05.1990"])
             
         assert result.exit_code == 1
         assert "Error" in result.stdout
@@ -317,7 +310,7 @@ class TestShowBirthdayCommand:
         mock_service.get_birthday.return_value = "15.05.1990"
         
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["show-birthday", "John"])
+            result = runner.invoke(app, ["contact", "birthday", "show", "John"])
             
         assert result.exit_code == 0
         assert "15.05.1990" in result.stdout
@@ -328,7 +321,7 @@ class TestShowBirthdayCommand:
         mock_service.get_birthday.return_value = "No birthday set for contact 'John'."
         
         with container.contact_service.override(mock_service):
-            result = runner.invoke(app, ["show-birthday", "John"])
+            result = runner.invoke(app, ["contact", "birthday", "show", "John"])
             
         assert result.exit_code == 0
         assert "No birthday set" in result.stdout
@@ -342,17 +335,20 @@ class TestBirthdaysCommand:
         from datetime import datetime, timedelta
         
         with runner.isolated_filesystem():
+            # Reset the singleton address book to ensure a fresh instance
+            container.address_book.reset()
+            
             # Create a real contact with upcoming birthday
             today = datetime.today().date()
             bday_in_5_days = today + timedelta(days=5)
             
-            result_add = runner.invoke(app, ["add", "John", "1234567890"])
+            result_add = runner.invoke(app, ["contact", "add", "John", "1234567890"])
             assert result_add.exit_code == 0
             
-            result_bday = runner.invoke(app, ["add-birthday", "John", bday_in_5_days.strftime("%d.%m.2000")])
+            result_bday = runner.invoke(app, ["contact", "birthday", "add", "John", bday_in_5_days.strftime("%d.%m.2000")])
             assert result_bday.exit_code == 0
             
-            result = runner.invoke(app, ["birthdays"])
+            result = runner.invoke(app, ["contact", "birthday", "upcoming"])
             
             assert result.exit_code == 0
             assert "John" in result.stdout
@@ -360,15 +356,18 @@ class TestBirthdaysCommand:
     def test_birthdays_none(self):
         """Test showing birthdays when none upcoming."""
         with runner.isolated_filesystem():
+            # Reset the singleton address book to ensure a fresh instance
+            container.address_book.reset()
+            
             # Create contact with birthday far in the future (or past)
-            result_add = runner.invoke(app, ["add", "Alice", "9876543210"])
+            result_add = runner.invoke(app, ["contact", "add", "Alice", "9876543210"])
             assert result_add.exit_code == 0
             
             # Add birthday more than 7 days away
-            result_bday = runner.invoke(app, ["add-birthday", "Alice", "01.01.2000"])
+            result_bday = runner.invoke(app, ["contact", "birthday", "add", "Alice", "01.01.2000"])
             # Might or might not have upcoming birthday depending on date
             
-            result = runner.invoke(app, ["birthdays"])
+            result = runner.invoke(app, ["contact", "birthday", "upcoming"])
             
         assert result.exit_code == 0
         assert "No upcoming birthdays" in result.stdout

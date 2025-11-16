@@ -10,7 +10,7 @@ from src.models.address_book import AddressBook
 from src.services.contact_service import ContactService
 from src.services.note_service import NoteService
 from src.services.search_service import SearchService
-from src.utils.progressive_params import ContactSelector, NoteSelector, TagSelector, TextInput, EmailInput, ConfirmInput, TagsInput, SelectInput, CountrySelector, CitySelector
+from src.utils.progressive_params import ContactSelector, NoteSelector, GroupSelector, TagSelector, TextInput, EmailInput, ConfirmInput, TagsInput, SelectInput, CountrySelector, CitySelector
 
 
 class Container(containers.DeclarativeContainer):
@@ -71,6 +71,11 @@ class Container(containers.DeclarativeContainer):
     note_selector_factory = providers.Factory(
         NoteSelector,
         service=note_service
+    )
+    
+    group_selector_factory = providers.Factory(
+        GroupSelector,
+        service=contact_service
     )
     
     tag_selector_factory = providers.Factory(

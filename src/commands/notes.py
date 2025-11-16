@@ -4,13 +4,13 @@ Unified notes commands with subcommands.
 All note-related operations organized under 'notes' command:
 - notes add
 - notes edit
-- notes delete
+- notes remove
 - notes list
 - notes show
-- notes tag-add
-- notes tag-remove
-- notes tag-clear
-- notes tag-list
+- notes tag add
+- notes tag remove
+- notes tag clear
+- notes tag list
 """
 
 import typer
@@ -43,8 +43,8 @@ console = Console()
 
 @progressive_params(
     contact_name=Container.contact_selector_factory,
-    note_name=partial(Container.text_input_factory, "Note name/title:", required=True),
-    content=partial(Container.text_input_factory, "Note content:", required=True, default="")
+    note_name=partial(Container.text_input_factory, "Note name/title", required=True),
+    content=partial(Container.text_input_factory, "Note content", required=True, default="")
 )
 @inject
 @handle_service_errors
@@ -100,7 +100,7 @@ def _edit_note_impl(
 @progressive_params(
     contact_name=Container.contact_selector_factory,
     note_name=Container.note_selector_factory,
-    content=partial(Container.text_input_factory, "New content:", required=True)
+    content=partial(Container.text_input_factory, "New content", required=True)
 )
 def edit_note_command(
     contact_name: Optional[str] = typer.Argument(None, help="Contact name", autocompletion=complete_contact_name),
@@ -122,35 +122,35 @@ def edit_note_command(
 @inject
 @handle_service_errors
 @auto_save
-def _delete_note_impl(
+def _remove_note_impl(
     contact_name: str,
     note_name: str,
     service: NoteService = Provide[Container.note_service],
     filename: str = Provide[Container.config.storage.filename],
 ):
-    """Implementation: Delete a note from a contact."""
+    """Implementation: Remove a note from a contact."""
     msg = service.delete_note(contact_name, note_name)
     console.print(f"[bold green]{msg}[/bold green]")
 
 
-@app.command(name="delete")
+@app.command(name="remove")
 @progressive_params(
     contact_name=Container.contact_selector_factory,
     note_name=Container.note_selector_factory
 )
-def delete_note_command(
+def remove_note_command(
     contact_name: Optional[str] = typer.Argument(None, help="Contact name", autocompletion=complete_contact_name),
     note_name: Optional[str] = typer.Argument(None, help="Note name", autocompletion=complete_note_name),
 ):
     """
-    Delete a note from a contact.
+    Remove a note from a contact.
     
     Supports progressive fulfillment:
-        notes delete                         # Interactive contact + note selection
-        notes delete "John"                  # Select note
-        notes delete "John" "Meeting"        # Direct deletion
+        notes remove                         # Interactive contact + note selection
+        notes remove "John"                  # Select note
+        notes remove "John" "Meeting"        # Direct removal
     """
-    return _delete_note_impl(contact_name, note_name)
+    return _remove_note_impl(contact_name, note_name)
 
 
 @inject
@@ -263,10 +263,16 @@ def show_note_command(
 # Tag Management Commands
 # ============================================================================
 
+tag_app = typer.Typer(
+    help="Manage tags for notes",
+    invoke_without_command=True
+)
+
+
 @progressive_params(
     contact_name=Container.contact_selector_factory,
     note_name=Container.note_selector_factory,
-    tags=partial(Container.tags_input_factory, "Enter tags (comma-separated):", required=True)
+    tags=partial(Container.tags_input_factory, "Enter tags (comma-separated)", required=True)
 )
 @inject
 @handle_service_errors
@@ -294,7 +300,7 @@ def _note_tag_add_impl(
     console.print(f"[bold green]Tags added to note '{note_name}': {', '.join(added)}[/bold green]")
 
 
-@app.command(name="tag-add")
+@tag_app.command(name="add")
 def note_tag_add_command(
     contact_name: Optional[str] = typer.Argument(None, help="Contact name", autocompletion=complete_contact_name),
     note_name: Optional[str] = typer.Argument(None, help="Note name", autocompletion=complete_note_name),
@@ -309,10 +315,10 @@ def note_tag_add_command(
     Add one or many tags to a note.
     
     Supports progressive fulfillment:
-        notes tag-add                                # Full interactive
-        notes tag-add "John"                         # Select note, prompt tags
-        notes tag-add "John" "Meeting"               # Prompt tags
-        notes tag-add "John" "Meeting" work urgent   # Direct add
+        notes tag add                                # Full interactive
+        notes tag add "John"                         # Select note, prompt tags
+        notes tag add "John" "Meeting"               # Prompt tags
+        notes tag add "John" "Meeting" work urgent   # Direct add
     """
     # Parse tags (handle both list and individual tokens)
     flat: Optional[List[str]] = None
@@ -330,7 +336,7 @@ def note_tag_add_command(
 @progressive_params(
     contact_name=Container.contact_selector_factory,
     note_name=Container.note_selector_factory,
-    tag=partial(Container.tag_selector_factory, "Select tag to remove:")
+    tag=partial(Container.tag_selector_factory, "Select tag to remove")
 )
 @inject
 @handle_service_errors
@@ -347,13 +353,21 @@ def _note_tag_remove_impl(
     console.print(f"[bold green]{msg}[/bold green]")
 
 
-@app.command(name="tag-remove")
+@tag_app.command(name="remove")
 def note_tag_remove_command(
     contact_name: Optional[str] = typer.Argument(None, help="Contact name", autocompletion=complete_contact_name),
     note_name: Optional[str] = typer.Argument(None, help="Note name", autocompletion=complete_note_name),
     tag: Optional[str] = typer.Argument(None, help="Tag", autocompletion=complete_tag),
 ):
-    """Remove a tag from a note."""
+    """
+    Remove a tag from a note.
+    
+    Supports progressive fulfillment:
+        notes tag remove                         # Full interactive
+        notes tag remove "John"                  # Select note and tag
+        notes tag remove "John" "Meeting"        # Select tag
+        notes tag remove "John" "Meeting" work   # Direct removal
+    """
     return _note_tag_remove_impl(contact_name, note_name, tag)
 
 
@@ -375,12 +389,19 @@ def _note_tag_clear_impl(
     console.print(f"[bold green]{msg}[/bold green]")
 
 
-@app.command(name="tag-clear")
+@tag_app.command(name="clear")
 def note_tag_clear_command(
     contact_name: Optional[str] = typer.Argument(None, help="Contact name", autocompletion=complete_contact_name),
     note_name: Optional[str] = typer.Argument(None, help="Note name", autocompletion=complete_note_name),
 ):
-    """Clear all tags from a note."""
+    """
+    Clear all tags from a note.
+    
+    Supports progressive fulfillment:
+        notes tag clear                         # Full interactive
+        notes tag clear "John"                  # Select note
+        notes tag clear "John" "Meeting"        # Direct clear
+    """
     return _note_tag_clear_impl(contact_name, note_name)
 
 
@@ -400,13 +421,31 @@ def _note_tag_list_impl(
     console.print(", ".join(tags) if tags else "(no tags)")
 
 
-@app.command(name="tag-list")
+@tag_app.command(name="list")
 def note_tag_list_command(
     contact_name: Optional[str] = typer.Argument(None, help="Contact name", autocompletion=complete_contact_name),
     note_name: Optional[str] = typer.Argument(None, help="Note name", autocompletion=complete_note_name),
 ):
-    """List tags of a note."""
+    """
+    List tags of a note.
+    
+    Supports progressive fulfillment:
+        notes tag list                         # Full interactive
+        notes tag list "John"                  # Select note
+        notes tag list "John" "Meeting"        # Direct listing
+    """
     return _note_tag_list_impl(contact_name, note_name)
+
+
+@tag_app.callback(invoke_without_command=True)
+def tag_callback(ctx: typer.Context):
+    """Callback for tag command group. Shows menu if no subcommand."""
+    if ctx.invoked_subcommand is None:
+        return _manage_note_tags_submenu()
+
+
+# Register tag sub-app
+app.add_typer(tag_app, name="tag")
 
 
 # ============================================================================
@@ -426,7 +465,7 @@ def _notes_menu():
         ("list", list_notes_command, "List notes", (None,)),
         ("show", show_note_command, "Show note (full content)", (None, None)),
         ("edit", edit_note_command, "Edit note", (None, None, None)),
-        ("delete", delete_note_command, "Delete note", (None, None)),
+        ("remove", remove_note_command, "Remove note", (None, None)),
         ("tags", _manage_note_tags_submenu, "Manage note tags", ()),
     )
     

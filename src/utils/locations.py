@@ -17,8 +17,8 @@ class LocationsCatalog:
     """
     Catalog manager for countries and cities.
     
-    Handles loading, searching, and adding user-defined cities.
-    Separates predefined cities from user-added ones for audit purposes.
+    Handles loading, searching, and adding user-defined cities and countries.
+    Separates predefined entries from user-added ones for audit purposes.
     """
     
     def __init__(self, catalog_path: Path = LOCATIONS_FILE) -> None:
@@ -39,9 +39,13 @@ class LocationsCatalog:
                 self._data = json.load(f)
         except FileNotFoundError:
             # If file doesn't exist, create empty structure
-            self._data = {"countries": {}, "user_cities": {}}
+            self._data = {"countries": {}, "user_cities": {}, "user_countries": {}}
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in locations file: {e}") from e
+        
+        # Ensure user_countries key exists
+        if "user_countries" not in self._data:
+            self._data["user_countries"] = {}
     
     def _save(self) -> None:
         """Save catalog to JSON file."""
@@ -49,9 +53,12 @@ class LocationsCatalog:
         with open(self.catalog_path, "w", encoding="utf-8") as f:
             json.dump(self._data, f, ensure_ascii=False, indent=2)
     
-    def get_countries(self) -> list[tuple[str, str]]:
+    def get_countries(self, include_user: bool = True) -> list[tuple[str, str]]:
         """
         Get list of all countries as (country_code, country_name) tuples.
+        
+        Args:
+            include_user: If True, include user-added countries
         
         Returns:
             List of tuples sorted by country name
@@ -60,6 +67,14 @@ class LocationsCatalog:
             (code, info["name"])
             for code, info in self._data.get("countries", {}).items()
         ]
+        
+        if include_user:
+            user_countries = [
+                (code, info["name"])
+                for code, info in self._data.get("user_countries", {}).items()
+            ]
+            countries.extend(user_countries)
+        
         return sorted(countries, key=lambda x: x[1])
     
     def get_country_name(self, country_code: str) -> Optional[str]:
@@ -72,12 +87,18 @@ class LocationsCatalog:
         Returns:
             Country name or None if not found
         """
+        # Check predefined countries first
         country = self._data.get("countries", {}).get(country_code)
-        return country.get("name") if country else None
+        if country:
+            return country.get("name")
+        
+        # Check user countries
+        user_country = self._data.get("user_countries", {}).get(country_code)
+        return user_country.get("name") if user_country else None
     
     def has_country(self, country_code: str) -> bool:
         """
-        Check if country exists in catalog.
+        Check if country exists in catalog (predefined or user-added).
         
         Args:
             country_code: ISO country code
@@ -85,7 +106,10 @@ class LocationsCatalog:
         Returns:
             True if country exists
         """
-        return country_code in self._data.get("countries", {})
+        return (
+            country_code in self._data.get("countries", {})
+            or country_code in self._data.get("user_countries", {})
+        )
     
     def get_cities(self, country_code: str, include_user: bool = True) -> list[str]:
         """
@@ -101,7 +125,13 @@ class LocationsCatalog:
         if not self.has_country(country_code):
             return []
         
-        predefined = self._data["countries"][country_code].get("cities", [])
+        # Get predefined cities from predefined or user countries
+        if country_code in self._data.get("countries", {}):
+            predefined = self._data["countries"][country_code].get("cities", [])
+        elif country_code in self._data.get("user_countries", {}):
+            predefined = self._data["user_countries"][country_code].get("cities", [])
+        else:
+            predefined = []
         
         if not include_user:
             return sorted(predefined)
@@ -151,10 +181,15 @@ class LocationsCatalog:
         if not city_name:
             raise ValueError("City name cannot be empty")
         
-        # Check if city already exists (predefined or user-added)
-        predefined = self._data["countries"][country_code].get("cities", [])
-        if city_name in predefined:
-            raise ValueError(f"City '{city_name}' already exists in predefined list")
+        # Check if city already exists in predefined cities
+        if country_code in self._data.get("countries", {}):
+            predefined = self._data["countries"][country_code].get("cities", [])
+            if city_name in predefined:
+                raise ValueError(f"City '{city_name}' already exists in predefined list")
+        elif country_code in self._data.get("user_countries", {}):
+            predefined = self._data["user_countries"][country_code].get("cities", [])
+            if city_name in predefined:
+                raise ValueError(f"City '{city_name}' already exists in predefined list")
         
         # Initialize user_cities if needed
         if "user_cities" not in self._data:
@@ -196,6 +231,70 @@ class LocationsCatalog:
         """
         user_cities = self._data.get("user_cities", {}).get(country_code, [])
         return city_name in user_cities
+    
+    def add_user_country(self, country_code: str, country_name: str) -> None:
+        """
+        Add a user-defined country to the catalog.
+        
+        Args:
+            country_code: Country code (e.g., "XX", "YY")
+            country_name: Country name
+            
+        Raises:
+            ValueError: If country already exists or invalid input
+        """
+        country_code = country_code.strip().upper()
+        country_name = country_name.strip()
+        
+        if not country_code:
+            raise ValueError("Country code cannot be empty")
+        
+        if not country_name:
+            raise ValueError("Country name cannot be empty")
+        
+        # Validate country code format (2-3 letters)
+        if not country_code.isalpha() or len(country_code) < 2 or len(country_code) > 3:
+            raise ValueError("Country code must be 2-3 letters")
+        
+        # Check if country already exists
+        if self.has_country(country_code):
+            raise ValueError(f"Country '{country_code}' already exists in catalog")
+        
+        # Initialize user_countries if needed
+        if "user_countries" not in self._data:
+            self._data["user_countries"] = {}
+        
+        # Add to user countries
+        self._data["user_countries"][country_code] = {
+            "name": country_name,
+            "cities": []
+        }
+        self._save()
+    
+    def get_user_countries(self) -> list[tuple[str, str]]:
+        """
+        Get only user-added countries (for audit purposes).
+        
+        Returns:
+            List of (country_code, country_name) tuples sorted by name
+        """
+        user_countries = [
+            (code, info["name"])
+            for code, info in self._data.get("user_countries", {}).items()
+        ]
+        return sorted(user_countries, key=lambda x: x[1])
+    
+    def is_user_country(self, country_code: str) -> bool:
+        """
+        Check if country is user-added (not predefined).
+        
+        Args:
+            country_code: Country code to check
+            
+        Returns:
+            True if country is user-added
+        """
+        return country_code in self._data.get("user_countries", {})
 
 
 # Global catalog instance (singleton pattern)

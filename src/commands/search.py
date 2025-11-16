@@ -153,8 +153,8 @@ def _search_contacts_impl(
 
 @app.command(name="contacts")
 @progressive_params(
-    query=partial(Container.text_input_factory, "Enter search query:", required=True),
-    by=partial(Container.select_input_factory, "Select search type:", choices=_get_contact_search_type_choices(), required=False)
+    query=partial(Container.text_input_factory, "Enter search query", required=True),
+    by=partial(Container.select_input_factory, "Select search type", choices=_get_contact_search_type_choices(), required=False)
 )
 def search_contacts_command(
     query: Optional[str] = typer.Argument(None, help="Search query (for tags-all/tags-any use comma-separated: work,important)"),
@@ -222,8 +222,8 @@ def _search_notes_impl(
 
 @app.command(name="notes")
 @progressive_params(
-    query=partial(Container.text_input_factory, "Enter search query:", required=True),
-    by=partial(Container.select_input_factory, "Select search type:", choices=_get_note_search_type_choices(), required=False)
+    query=partial(Container.text_input_factory, "Enter search query", required=True),
+    by=partial(Container.select_input_factory, "Select search type", choices=_get_note_search_type_choices(), required=False)
 )
 def search_notes_command(
     query: Optional[str] = typer.Argument(None, help="Search query"),
