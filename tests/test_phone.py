@@ -14,12 +14,10 @@ def test_phone_accepts_local_ua_number():
     assert phone.national_number == 672355960
 
 
-def test_phone_accepts_international_number():
-    phone = Phone("+1 (650) 253-0000")
-    assert phone.value == "+16502530000"
-    assert phone.display_value == "+1 650-253-0000"
-    assert phone.country_code == 1
-    assert phone.national_number == 6502530000
+def test_phone_rejects_non_ukrainian_number():
+    """Test that non-Ukrainian phone numbers are rejected (system is UA-only)."""
+    with pytest.raises(ValueError, match="Phone number must be exactly 10 digits"):
+        Phone("+1 (650) 253-0000")  # US number with 10 digits, should be rejected
 
 
 def test_phone_accepts_ukrainian_international_number_without_plus():
@@ -34,6 +32,10 @@ def test_phone_invalid_number_raises_value_error():
 
     with pytest.raises(ValueError, match="Phone number cannot be empty"):
         Phone("  ")
+    
+    # Test that 11-digit numbers are rejected
+    with pytest.raises(ValueError, match="Phone number must be exactly 10 digits.* got 11 digits"):
+        Phone("09758367551")  # 11 digits instead of 10
 
 
 def test_phone_display_value_national():
