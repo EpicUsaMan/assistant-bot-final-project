@@ -42,7 +42,7 @@ def validate_phone(value: str) -> str:
     national_number_str = str(phone.national_number)
     if len(national_number_str) != _ACEPTED_PHONE_LEN:
         raise typer.BadParameter(
-            f"Phone number must be exactly 10 digits (e.g., 0671234567), got {len(national_number_str) + 1} digits"
+            f"Phone number must be exactly 10 digits, not counting country code (e.g., 0671234567, +380671234567), got {len(national_number_str) + 1} digits"
         )
 
     return phone.value
