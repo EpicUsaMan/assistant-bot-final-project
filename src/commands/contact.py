@@ -730,11 +730,10 @@ def _tag_add_impl(
 )
 def tag_add_command(
     contact_name: Optional[str] = typer.Argument(None, help="Contact name", autocompletion=complete_contact_name),
-    tags_tokens: Optional[List[str]] = typer.Argument(
+    tags: Optional[List[str]] = typer.Argument(
         None,
         help='One or more tags or CSV chunks (quotes supported): work "urgent,important"',
         metavar="TAGS...",
-        autocompletion=complete_tag,
     ),
 ):
     """
@@ -747,13 +746,13 @@ def tag_add_command(
     """
     # Parse tags (handle both list and individual tokens)
     flat: Optional[List[str]] = None
-    if tags_tokens is not None:
+    if tags is not None:
         flat = []
-        if isinstance(tags_tokens, list):
-            for token in tags_tokens:
+        if isinstance(tags, list):
+            for token in tags:
                 flat.extend(split_tags_string(token))
         else:
-            flat.extend(split_tags_string(tags_tokens))
+            flat.extend(split_tags_string(tags))
     
     return _tag_add_impl(contact_name, flat)
 
