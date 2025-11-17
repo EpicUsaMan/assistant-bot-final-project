@@ -235,6 +235,36 @@ class TestRemovePhone:
             contact_service.remove_phone("Charlie", "9999999999")
 
 
+class TestAddPhone:
+    """Tests for add_phone method."""
+    
+    def test_add_phone_to_existing_contact(self, populated_service):
+        """Test adding a second phone number to an existing contact."""
+        result = populated_service.add_phone("John", "9876543210")
+        assert "added" in result.lower()
+        record = populated_service.address_book.find("John")
+        assert len(record.phones) == 2
+        phone_values = [p.value for p in record.phones]
+        # Phone values include country code prefix
+        assert any("1234567890" in phone for phone in phone_values)
+        assert any("9876543210" in phone for phone in phone_values)
+    
+    def test_add_phone_contact_not_found(self, contact_service):
+        """Test adding phone to non-existent contact."""
+        with pytest.raises(ValueError, match="not found"):
+            contact_service.add_phone("NonExistent", "1234567890")
+    
+    def test_add_phone_duplicate(self, populated_service):
+        """Test adding a duplicate phone number."""
+        with pytest.raises(ValueError, match="already exists"):
+            populated_service.add_phone("John", "1234567890")
+    
+    def test_add_phone_with_invalid_format(self, populated_service):
+        """Test adding a phone with invalid format."""
+        with pytest.raises(ValueError):
+            populated_service.add_phone("John", "invalid")
+
+
 class TestGetAllContacts:
     """Tests for get_all_contacts method."""
     
