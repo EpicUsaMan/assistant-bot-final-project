@@ -20,7 +20,7 @@ import typer
 import click
 from rich.console import Console
 from rich.tree import Tree
-from src.container import Container
+from src.container import container_instance as container
 from src.utils.paths import get_storage_path
 from src.services.contact_service import ContactService
 
@@ -31,7 +31,6 @@ app = typer.Typer(
 )
 console = Console()
 
-container = Container()
 container.config.storage.filename.from_value(str(get_storage_path()))
 
 # Track if container is already wired and commands registered
@@ -43,20 +42,6 @@ def _make_group_prompt() -> str:
     service: ContactService = container.contact_service()
     group_id = service.get_current_group()
     return f"[{group_id}] > "
-
-
-def _iter_commands() -> list[tuple[str, str]]:
-    """Collect (name, help) for top-level commands."""
-    root_cmd: click.Command = typer.main.get_command(app)
-    result: list[tuple[str, str]] = []
-
-    for name, cmd in root_cmd.commands.items():
-        help_line = (cmd.help or "").strip().splitlines()[0] if cmd.help else ""
-        result.append((name, help_line))
-
-    # sorted by name
-    result.sort(key=lambda x: x[0])
-    return result
 
 
 def _print_menu() -> None:

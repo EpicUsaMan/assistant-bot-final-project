@@ -335,39 +335,43 @@ class TestBirthdaysCommand:
         from datetime import datetime, timedelta
         
         with runner.isolated_filesystem():
-            # Reset the singleton address book to ensure a fresh instance
-            container.address_book.reset()
-            
-            # Create a real contact with upcoming birthday
-            today = datetime.today().date()
-            bday_in_5_days = today + timedelta(days=5)
-            
-            result_add = runner.invoke(app, ["contact", "add", "John", "1234567890"])
-            assert result_add.exit_code == 0
-            
-            result_bday = runner.invoke(app, ["contact", "birthday", "add", "John", bday_in_5_days.strftime("%d.%m.2000")])
-            assert result_bday.exit_code == 0
-            
-            result = runner.invoke(app, ["contact", "birthday", "upcoming"])
-            
-            assert result.exit_code == 0
-            assert "John" in result.stdout
+            # Create fresh instances and override providers
+            fresh_book = AddressBook()
+            fresh_service = ContactService(fresh_book)
+            with container.address_book.override(fresh_book), \
+                 container.contact_service.override(fresh_service):
+                # Create a real contact with upcoming birthday
+                today = datetime.today().date()
+                bday_in_5_days = today + timedelta(days=5)
+                
+                result_add = runner.invoke(app, ["contact", "add", "John", "1234567890"])
+                assert result_add.exit_code == 0
+                
+                result_bday = runner.invoke(app, ["contact", "birthday", "add", "John", bday_in_5_days.strftime("%d.%m.2000")])
+                assert result_bday.exit_code == 0
+                
+                result = runner.invoke(app, ["contact", "birthday", "upcoming"])
+                
+                assert result.exit_code == 0
+                assert "John" in result.stdout
     
     def test_birthdays_none(self):
         """Test showing birthdays when none upcoming."""
         with runner.isolated_filesystem():
-            # Reset the singleton address book to ensure a fresh instance
-            container.address_book.reset()
-            
-            # Create contact with birthday far in the future (or past)
-            result_add = runner.invoke(app, ["contact", "add", "Alice", "9876543210"])
-            assert result_add.exit_code == 0
-            
-            # Add birthday more than 7 days away
-            result_bday = runner.invoke(app, ["contact", "birthday", "add", "Alice", "01.01.2000"])
-            # Might or might not have upcoming birthday depending on date
-            
-            result = runner.invoke(app, ["contact", "birthday", "upcoming"])
-            
-        assert result.exit_code == 0
-        assert "No upcoming birthdays" in result.stdout
+            # Create fresh instances and override providers
+            fresh_book = AddressBook()
+            fresh_service = ContactService(fresh_book)
+            with container.address_book.override(fresh_book), \
+                 container.contact_service.override(fresh_service):
+                # Create contact with birthday far in the future (or past)
+                result_add = runner.invoke(app, ["contact", "add", "Alice", "9876543210"])
+                assert result_add.exit_code == 0
+                
+                # Add birthday more than 7 days away
+                result_bday = runner.invoke(app, ["contact", "birthday", "add", "Alice", "01.01.2000"])
+                # Might or might not have upcoming birthday depending on date
+                
+                result = runner.invoke(app, ["contact", "birthday", "upcoming"])
+                
+                assert result.exit_code == 0
+                assert "No upcoming birthdays" in result.stdout

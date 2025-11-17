@@ -33,14 +33,14 @@ from rich.console import Console
 from typing import TYPE_CHECKING
 from dependency_injector.wiring import Provide, inject
 from src.utils.locations import get_catalog
+from src.container import Container, container_instance as container
 
 if TYPE_CHECKING:
+    from src.services.contact_service import ContactService
     from src.services.note_service import NoteService
-    from src.container import Container
 
 console = Console()
 F = TypeVar('F', bound=Callable[..., Any])
-
 
 class ParameterProvider(ABC):
     """
@@ -179,7 +179,7 @@ class ContactSelector(BaseSelector):
     def __init__(
         self,
         message: str = "Select contact:",
-        service: "NoteService" = Provide["Container.note_service"]
+        service: "ContactService" = Provide[Container.contact_service]
     ):
         """
         Initialize ContactSelector.
@@ -215,7 +215,7 @@ class NoteSelector(BaseSelector):
     def __init__(
         self,
         message: str = "Select note:",
-        service: "NoteService" = Provide["Container.note_service"]
+        service: "NoteService" = Provide[Container.note_service]
     ):
         """
         Initialize NoteSelector.
@@ -262,7 +262,7 @@ class GroupSelector(BaseSelector):
     def __init__(
         self,
         message: str = "Select group:",
-        service = Provide["Container.contact_service"]
+        service = Provide[Container.contact_service]
     ):
         """
         Initialize GroupSelector.
@@ -567,17 +567,15 @@ class _ProgressiveParamsWrapper:
                 
                 # Check if it's a dependency-injector Provider
                 # These need to be called on the container instance, not the class
-                if isinstance(provider_or_factory_to_check, di_providers.Provider):
+                if isinstance(provider_or_factory_to_check, di_providers.Provider):                 
                     # It's a DI provider - need to resolve it through the container instance
                     # Find which attribute of Container this provider is
-                    from src.main import container
-                    from src.container import Container as ContainerClass
                     
                     provider_name = None
-                    for attr_name in dir(ContainerClass):
+                    for attr_name in dir(Container):
                         if not attr_name.startswith('_'):
                             try:
-                                attr_value = getattr(ContainerClass, attr_name)
+                                attr_value = getattr(Container, attr_name)
                                 if attr_value is provider_or_factory_to_check:
                                     provider_name = attr_name
                                     break
