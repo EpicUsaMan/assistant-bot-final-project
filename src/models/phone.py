@@ -74,6 +74,13 @@ class Phone(Field):
         if not phonenumbers.is_possible_number(parsed):
             raise ValueError(f"Phone number is not possible: {stripped}")
 
+        # Enforce 9-digit requirement for Ukrainian national number (10 digits with leading 0)
+        national_number_str = str(parsed.national_number)
+        if len(national_number_str) != 9:
+            raise ValueError(
+                f"Phone number must be exactly 10 digits (e.g., 0671234567), got {len(national_number_str) + 1} digits"
+            )
+
         canonical = phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
         display_intl = phonenumbers.format_number(parsed, PhoneNumberFormat.INTERNATIONAL)
         display_nat = phonenumbers.format_number(parsed, PhoneNumberFormat.NATIONAL)

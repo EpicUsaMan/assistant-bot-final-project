@@ -23,7 +23,7 @@ import typer
 from datetime import datetime, date
 from src.models.phone import Phone
 
-_ACEPTED_PHONE_LEN = 10
+_ACEPTED_PHONE_LEN = 9
 _MAX_AGE_YEARS = 120
 _BDAY_FMT = "%d.%m.%Y"
 _EMAIL_RE = re.compile(r"^(?P<local>[A-Za-z0-9._%+-]+)@(?P<domain>[A-Za-z0-9.-]+\.[A-Za-z]{2,24})$")
@@ -38,6 +38,12 @@ def validate_phone(value: str) -> str:
         phone = Phone(raw)
     except ValueError as exc:
         raise typer.BadParameter(str(exc)) from exc
+
+    national_number_str = str(phone.national_number)
+    if len(national_number_str) != _ACEPTED_PHONE_LEN:
+        raise typer.BadParameter(
+            f"Phone number must be exactly 10 digits (e.g., 0671234567), got {len(national_number_str) + 1} digits"
+        )
 
     return phone.value
 
