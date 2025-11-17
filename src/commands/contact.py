@@ -370,7 +370,7 @@ def _phone_add_impl(
     filename: str = Provide[Container.config.storage.filename],
 ):
     """Implementation: Add a phone number to a contact."""
-    message = service.add_contact(name, phone)
+    message = service.add_phone(name, phone)
     console.print(f"[bold green]{message}[/bold green]")
 
 

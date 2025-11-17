@@ -271,6 +271,27 @@ class ContactService:
         record.remove_phone(phone)
         return f"Phone number '{phone}' removed from contact '{name}'."
 
+    def add_phone(self, name: str, phone: str) -> str:
+        """
+        Add a phone number to an existing contact.
+        
+        Args:
+            name: Contact name
+            phone: Phone number to add
+            
+        Returns:
+            Success message
+            
+        Raises:
+            ValueError: If contact not found or phone already exists
+        """
+        record = self.address_book.find(name)
+        if record is None:
+            raise ValueError(f"Contact '{name}' not found.")
+        
+        record.add_phone(phone)
+        return f"Phone number '{phone}' added to contact '{name}'."
+
     def get_all_contacts(
         self,
         sort_by: "ContactSortBy | None" = None,
